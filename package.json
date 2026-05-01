@@ -1,0 +1,38 @@
+{
+  "name": "tool-reduce",
+  "version": "0.1.0",
+  "description": "Compact-syntax tool-call middleware for the Vercel AI SDK v6 — drop tool-call output tokens by 5–10× with a <call>tool key=value</call> wire format.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": ["src", "README.md"],
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "bench": "bun run bench/eval.ts",
+    "bench:live": "bun run bench/live.ts"
+  },
+  "keywords": ["ai-sdk", "vercel-ai", "tool-calling", "middleware", "tokens", "llm"],
+  "license": "MIT",
+  "peerDependencies": {
+    "ai": "^6.0.0",
+    "@ai-sdk/provider": "^3.0.0",
+    "zod": "^3.0.0 || ^4.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.13",
+    "@types/node": "^25.6.0",
+    "ai": "^6.0.173",
+    "@ai-sdk/provider": "^3.0.10",
+    "@openrouter/ai-sdk-provider": "^2.9.0",
+    "zod": "^4.4.1",
+    "typescript": "^6.0.3"
+  },
+  "dependencies": {
+    "js-tiktoken": "^1.0.21"
+  }
+}
