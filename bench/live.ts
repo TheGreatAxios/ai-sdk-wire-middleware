@@ -50,6 +50,8 @@ import {
 } from './lib/judge.ts';
 import { resolveModels } from './lib/models.ts';
 import { resolveProviders, type ProviderId, type ProviderConfig, type ResolvedProviders } from './lib/providers.ts';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 
 // ─────────────────────────────────────────────────────── main ──
 
@@ -73,17 +75,27 @@ async function main() {
   const outPath = args.out ?? artifactPath(runId);
 
   // ── Resolve providers and their models ──
-  const defaultModels = resolveModels(args.models).map(m => m.slug);
+  // Only pass defaultModels if the user didn't explicitly configure models via env/CLI.
+  // This prevents DEFAULT_MODELS (anthropic/claude-sonnet-4.5 etc.) from leaking
+  // when BENCH_MODELS or --provider-models is set.
+  const hasExplicitModels = Object.keys(args.providerModels).length > 0 ||
+    Boolean(process.env['BENCH_MODELS']) ||
+    Boolean(process.env['BENCH_PROVIDERS']);
+  const defaultModels = !hasExplicitModels && args.models
+    ? resolveModels(args.models).map(m => m.slug)
+    : [];
   const resolved: ResolvedProviders = resolveProviders({
     providerModels: args.providerModels,
     defaultModels: defaultModels.length > 0 ? defaultModels : undefined,
     judgeModelOverride: args.judgeModel,
+    judgeProviderOverride: args.judgeProvider,
   });
 
   if (resolved.providers.length === 0) {
-    console.error('✗ No provider configured. Set either:');
-    console.error('    OPENROUTER_API_KEY  — or —');
-    console.error('    ZAI_BASE_URL + ZAI_API_KEY + ZAI_MODEL');
+    console.error('✗ No provider configured. Set one of:');
+    console.error('    OPENROUTER_API_KEY                     — OpenRouter (remote)');
+    console.error('    ZAI_BASE_URL + ZAI_API_KEY + ZAI_MODELS — Z.AI or OpenAI-compatible');
+    console.error('    OLLAMA_BASE_URL + OLLAMA_MODELS        — Local Ollama');
     process.exit(1);
   }
 
@@ -180,8 +192,14 @@ async function main() {
   console.log(`artifact:    ${outPath}`);
   console.log(`judge model: ${judgeModel}`);
   if (args.resume) console.log(`resume:      ${args.resume}  (${skipKeys.length} existing OK rows, ${pending.length} pending)`);
-  console.log(`providers:   ${resolved.providers.map(p => `${p.id}(${p.models.length} models)`).join(', ')}`);
-  console.log(`models:      ${resolved.allModelSlugs.join(', ')}`);
+  console.log('');
+  for (const p of resolved.providers) {
+    console.log(`  ── ${p.label} — ${p.models.length} model(s)`);
+    for (const m of p.models) {
+      console.log(`    ${m}`);
+    }
+  }
+  console.log('');
   console.log(`cases:       ${activeCases.length}`);
   console.log(`modes:       ${modes.map(m => m.label).join(', ')}`);
   console.log(`reps:        ${reps}`);
@@ -197,15 +215,12 @@ async function main() {
     process.exit(0);
   }
 
-  // ── Judge caller (routes through whichever provider is available) ──
+  // ── Judge caller (routes through the judge provider, not the runner) ──
   let judgeCaller: JudgeCaller | null = null;
-  if (hasJudge) {
+  if (hasJudge && resolved.judgeProvider) {
     judgeCaller = async (input: JudgeInput, model: string) => {
-      // Route the judge call through whichever provider hosts the judge model.
-      const judgeProvider = resolved.providers.find(p => p.models.includes(model))
-        ?? resolved.providers.find(p => p.id === 'openrouter')
-        ?? resolved.providers.find(p => p.id === 'zai')!;
-      const judgeModelObj = judgeProvider.chatModel(model);
+      const judgeProv = resolved.judgeProvider!;
+      const judgeModelObj = judgeProv.chatModel(model);
       const { system, user } = buildJudgePrompt(input);
       const res = await generateText({
         model: judgeModelObj,
@@ -239,8 +254,17 @@ async function main() {
   // ── Run cells ──
   let done = 0;
   const errors: string[] = [];
+  let lastProviderId = '';
+  let lastName = '';
 
   for (const cell of pending) {
+    // Print model-group separator when switching models/providers.
+    if (cell.model !== lastName || cell.providerId !== lastProviderId) {
+      lastName = cell.model;
+      lastProviderId = cell.providerId;
+      const providerLabel = resolved.providers.find(p => p.id === cell.providerId)?.label ?? cell.providerId;
+      console.log(`\n── ${providerLabel} :: ${cell.model} ──`);
+    }
     const c = activeCases.find(c => c.name === cell.caseName)!;
     // Route to the correct provider based on the model slug.
     const provider = modelToProvider.get(cell.model);
@@ -333,6 +357,11 @@ async function main() {
       row.ok = false;
       row.error = message.slice(0, 400);
       row.elapsedMs = elapsed;
+      row.judge = {
+        verdict: 'not-equivalent',
+        reason: `API error: ${message.slice(0, 200)}`,
+        model: judgeModel,
+      };
       errors.push(`${cell.model}/${cell.caseName}/${cell.mode}/${cell.rep}: ${message.slice(0, 100)}`);
 
       const providerTag = `[${cell.providerId === 'zai' ? 'ZAI' : 'OR'}]`;
@@ -353,25 +382,41 @@ async function main() {
   updateLatestPointer(runId);
 
   // ── Summary ──
+  // Count ALL rows — a NO_CALL (ok=false) is a failure, not a skip.
+  // It counts as not-equivalent and its output tokens are included.
   const allRows = loadRows(outPath);
-  const jsonRows = allRows.filter(r => r.mode === 'json' && r.ok);
-  const compactRows = allRows.filter(r => r.mode === 'compact' && r.ok && !r.ablation);
+  const jsonRows = allRows.filter(r => r.mode === 'json');
+  const compactRows = allRows.filter(r => r.mode === 'compact' && !r.ablation);
 
   const jsonEq = jsonRows.filter(r => r.judge?.verdict === 'equivalent').length;
   const compactEq = compactRows.filter(r => r.judge?.verdict === 'equivalent').length;
+  const jsonTotal = jsonRows.length;
+  const compactTotal = compactRows.length;
   const jsonOut = jsonRows.reduce((a, r) => a + (r.outputTokens ?? 0), 0);
   const compactOut = compactRows.reduce((a, r) => a + (r.outputTokens ?? 0), 0);
 
+  // Pure call tokens from the offline bench (format efficiency, ignores preamble)
+  // Load the latest offline results to get per-case pure call sizes
+  const offlinePath = join(dirname(outPath), 'latest-offline.json');
+  let jsonPure = 0, compactPure = 0;
+  try {
+    const offline = JSON.parse(readFileSync(offlinePath, 'utf8'));
+    for (const c of offline.perCall) {
+      jsonPure += c.json;
+      compactPure += c.compact;
+    }
+  } catch {}
+
   console.log('\n=== summary ===');
   if (jsonRows.length > 0) {
-    console.log(`JSON:    ${jsonEq}/${jsonRows.length} equivalent  totalOut=${jsonOut}`);
+    console.log(`JSON:    ${jsonEq}/${jsonTotal} equivalent  total=${jsonOut}  pure-call=${jsonPure}`);
   }
   if (compactRows.length > 0) {
-    console.log(`Compact: ${compactEq}/${compactRows.length} equivalent  totalOut=${compactOut}`);
-    if (jsonOut > 0) {
-      const reduction = ((jsonOut - compactOut) / jsonOut) * 100;
-      console.log(`Output-token reduction: ${(jsonOut - compactOut)} (${reduction.toFixed(1)}%)`);
-    }
+    const totalReduction = jsonOut > 0 ? ((jsonOut - compactOut) / jsonOut * 100) : 0;
+    const pureReduction = jsonPure > 0 ? ((jsonPure - compactPure) / jsonPure * 100) : 0;
+    console.log(`Compact: ${compactEq}/${compactTotal} equivalent  total=${compactOut}  pure-call=${compactPure}`);
+    console.log(`Reduction (total, incl preamble): ${(jsonOut - compactOut)} (${totalReduction.toFixed(1)}%)`);
+    console.log(`Reduction (pure call, format only): ${(jsonPure - compactPure)} (${pureReduction.toFixed(1)}%)`);
   }
   if (errors.length > 0) {
     console.log(`\n${errors.length} errors (recorded as ok=false rows):`);

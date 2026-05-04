@@ -254,8 +254,14 @@ async function main() {
   console.log(`runId:       ${runId}`);
   console.log(`artifact:    ${outPath}`);
   if (args.resume) console.log(`resume:      ${args.resume}  (${skipSet.size} existing, ${pending.length} pending)`);
-  console.log(`providers:   ${resolved.providers.map(p => `${p.id}(${p.models.length} models)`).join(', ')}`);
-  console.log(`models:      ${resolved.allModelSlugs.join(', ')}`);
+  console.log('');
+  for (const p of resolved.providers) {
+    console.log(`  ── ${p.label} — ${p.models.length} model(s)`);
+    for (const m of p.models) {
+      console.log(`    ${m}`);
+    }
+  }
+  console.log('');
   console.log(`tasks:       ${activeTasks.map(t => t.name).join(', ')}`);
   console.log(`reps:        ${reps}`);
   console.log(`total cells: ${cells.length} (${pending.length} pending)\n`);
@@ -272,8 +278,15 @@ async function main() {
 
   let done = 0;
   const errors: string[] = [];
+  let lastCellModel = '';
 
   for (const cell of pending) {
+    // Print model-group separator when switching models.
+    if (cell.model !== lastCellModel) {
+      lastCellModel = cell.model;
+      const pLabel = resolved.providers.find(p => p.id === cell.providerId)?.label ?? cell.providerId;
+      console.log(`\n── ${pLabel} :: ${cell.model} ──`);
+    }
     const task = activeTasks.find(t => t.name === cell.taskName)!;
     // Route to the correct provider based on the model slug.
     const provider = modelToProvider.get(cell.model);

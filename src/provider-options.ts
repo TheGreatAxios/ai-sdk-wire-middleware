@@ -6,9 +6,12 @@ import { STASH_KEY } from './types.ts';
 export function stashPlans(
   providerOptions: SharedV3ProviderOptions | undefined,
   plans: ToolPlan[],
+  stripPreamble?: boolean,
 ): SharedV3ProviderOptions {
+  const existing = (providerOptions?.[STASH_KEY] ?? {}) as Record<string, unknown>;
   const stash = {
-    ...(providerOptions?.[STASH_KEY] ?? {}),
+    ...existing,
+    stripPreamble,
     plans: plans.map(p => ({
       name: p.name,
       description: p.description ?? null,
@@ -24,26 +27,33 @@ export function stashPlans(
   } as SharedV3ProviderOptions;
 }
 
+interface StashShape {
+  stripPreamble?: boolean;
+  plans?: Array<{
+    name: string;
+    description: string | null;
+    signature: string;
+    encoding: ToolPlan['encoding'];
+    fields: ToolPlan['fields'];
+    inputSchema: string;
+  }>;
+}
+
 export function unstashPlans(
   providerOptions: SharedV3ProviderOptions | undefined,
-): ToolPlan[] {
-  const raw = (providerOptions?.[STASH_KEY] as { plans?: unknown } | undefined)?.plans as
-    | Array<{
-        name: string;
-        description: string | null;
-        signature: string;
-        encoding: ToolPlan['encoding'];
-        fields: ToolPlan['fields'];
-        inputSchema: string;
-      }>
-    | undefined;
-  if (!raw) return [];
-  return raw.map(p => ({
-    name: p.name,
-    description: p.description ?? undefined,
-    signature: p.signature,
-    encoding: p.encoding,
-    fields: p.fields,
-    inputSchema: JSON.parse(p.inputSchema),
-  }));
+): { plans: ToolPlan[]; stripPreamble: boolean } {
+  const stash = (providerOptions?.[STASH_KEY] ?? {}) as StashShape;
+  const raw = stash.plans;
+  if (!raw) return { plans: [], stripPreamble: false };
+  return {
+    stripPreamble: stash.stripPreamble ?? false,
+    plans: raw.map(p => ({
+      name: p.name,
+      description: p.description ?? undefined,
+      signature: p.signature,
+      encoding: p.encoding,
+      fields: p.fields,
+      inputSchema: JSON.parse(p.inputSchema),
+    })),
+  };
 }

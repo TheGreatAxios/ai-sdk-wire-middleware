@@ -17,7 +17,7 @@ export async function wrapGenerate(
   params: LanguageModelV3CallOptions,
   doGenerate: () => PromiseLike<LanguageModelV3GenerateResult>,
 ): Promise<LanguageModelV3GenerateResult> {
-  const plans = unstashPlans(params.providerOptions);
+  const { plans } = unstashPlans(params.providerOptions);
   const result = await doGenerate();
   if (plans.length === 0) return result;
 

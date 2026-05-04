@@ -7,6 +7,7 @@
  *   --cases x,y                 CSV list
  *   --reps 3                    number
  *   --judge-model m
+ *   --judge-provider p
  *   --kind live|offline|agent
  *   --resume <file>             path to JSONL artifact to resume from
  *   --ablation key=value        repeatable
@@ -24,6 +25,8 @@ export interface ParsedArgs {
   cases?: string[];
   reps?: number;
   judgeModel?: string;
+  /** Which provider routes the judge model (default: auto from model slug). */
+  judgeProvider?: string;
   kind?: 'live' | 'offline' | 'agent';
   resume?: string;
   out?: string;
@@ -86,6 +89,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
       case 'judge-model':
         out.judgeModel = val;
         break;
+      case 'judge-provider':
+        out.judgeProvider = val;
+        break;
       case 'kind':
         out.kind = (val as ParsedArgs['kind']) ?? undefined;
         break;
@@ -125,13 +131,35 @@ export function helpText(): string {
     `  --provider-models provider=a,b  Repeatable: models scoped to a provider\n` +
     `                                    e.g. --provider-models openrouter=m1,m2\n` +
     `                                         --provider-models zai=m3,m4\n` +
-    `                                    Env vars: OPENROUTER_MODELS, ZAI_MODELS\n` +
+    `                                         --provider-models ollama=llama3.2,qwen2.5\n` +
     `  --cases x,y                     Run only these cases by name (CSV)\n` +
     `  --reps 3                        Repetitions per (model, case, mode) cell\n` +
-    `  --judge-model m                 LLM judge model id (OpenRouter slug)\n` +
+    `  --judge-model m                 LLM judge model slug\n` +
+    `  --judge-provider p              Route judge calls through a specific provider\n` +
+    `                                  (openrouter | zai | ollama). Default: auto\n` +
     `  --kind live|offline|agent\n` +
     `  --resume <file>                 Resume from existing JSONL artifact (skip present cells)\n` +
     `  --ablation key=value            Tag rows with an ablation label (repeatable)\n` +
     `  --out <file>                    Override artifact output path\n` +
-    `  --dry                           Print plan and exit without making API calls\n`;
+    `  --dry                           Print plan and exit without making API calls\n` +
+    `\n` +
+    `Environment variables (.env or export):\n` +
+    `  ── Provider connections (one per type) ──\n` +
+    `  ZAI_BASE_URL + ZAI_API_KEY           — Z.AI / any OpenAI-compatible API\n` +
+    `  OPENROUTER_API_KEY                    — OpenRouter\n` +
+    `  OLLAMA_BASE_URL                       — Local Ollama (default: http://localhost:11434)\n` +
+    `  OLLAMA_API_KEY                        — Optional, for authenticated Ollama\n` +
+    `\n` +
+    `  ── Model selection ──\n` +
+    `  BENCH_PROVIDERS=zai,ollama            — Which providers to run (CSV)\n` +
+    `  BENCH_MODELS=zai:glm-5,glm-5-turbo|ollama:llama3.2\n` +
+    `                                         — Provider->models mapping (pipe/colon format)\n` +
+    `  JUDGE_PROVIDER=zai                    — Which provider routes judge calls\n` +
+    `  JUDGE_MODEL=glm-5-turbo               — Judge model slug\n` +
+    `\n` +
+    `  ── Legacy (still supported) ──\n` +
+    `  ZAI_MODELS=glm-5,glm-5-turbo          — CSV of Z.AI models\n` +
+    `  ZAI_MODEL=glm-5                       — Single Z.AI model (fallback)\n` +
+    `  OPENROUTER_MODELS=...                  — CSV of OpenRouter models\n` +
+    `  OLLAMA_MODELS=llama3.2                — CSV of Ollama models\n`;
 }

@@ -2,20 +2,17 @@ import type { CompactToolsOptions, ToolPlan } from './types.ts';
 
 const DEFAULT_HEADER = `# Wire format
 
-Instead of JSON function calls, use:
-  <call>getWeather location=Austin units=metric</call>
-  <call>sendEmail to=user@co.com subject="Meeting" body='Said "hello"' priority=high</call>
+Use <call>toolName key=value</call> instead of JSON tools.
 
-Values:
-  - Bare words: text=hello  (no quotes needed if no spaces/special chars)
-  - Double quotes: text="hello world"  (when value has spaces)
-  - Single quotes: text='said "hi"'  (when value has double quotes inside)
-  - Unquoted: numbers, booleans, null
-  - Arrays: tags=["a","b"]  (JSON array syntax)
-  - Nested: profile.displayName=Alice  (dot paths for nested objects)
-  - Tools marked <json> use: {"key":"val"}
+Examples:
+<call>getWeather location=Austin units=metric</call>
+<call>bookMeeting title="Review" date=2026-05-15 duration=60 attendees=["a@c.com"] room=A</call>
 
-No native JSON tool_calls. Only <call>…</call> tags are parsed.`;
+Values: bare if safe (text=hello), "quotes" if spaces, 'quotes' if inner ",
+numbers/booleans unquoted, arrays as ["a","b"], nested as parent.child=val.
+<json> tools use {"key":"val"} inside the call.
+
+Only <call>…</call> is parsed — no native JSON tool calls.`;
 
 export function buildSystemPrompt(plans: ToolPlan[], options: CompactToolsOptions): string {
   const header = options.manualHeader ?? DEFAULT_HEADER;

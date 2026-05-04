@@ -21,7 +21,7 @@ export async function wrapStream(
   params: LanguageModelV3CallOptions,
   doStream: () => PromiseLike<LanguageModelV3StreamResult>,
 ): Promise<LanguageModelV3StreamResult> {
-  const plans = unstashPlans(params.providerOptions);
+  const { plans } = unstashPlans(params.providerOptions);
   const result = await doStream();
   if (plans.length === 0) return result;
 

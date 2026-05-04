@@ -22,6 +22,14 @@ export interface CompactToolsOptions {
   placement?: 'first' | 'last';
   /** Optional override of the manual that documents the call format. */
   manualHeader?: string;
+  /**
+   * If true, strip all text outside `<call>…</call>` tags from the model output.
+   * Only tool-call parts are emitted — preamble, trailing text, and interstitial
+   * text between multiple calls are dropped. This saves output tokens when the
+   * model "thinks out loud" before/after calls.
+   * Default `false` (preserve all text).
+   */
+  stripPreamble?: boolean;
   /** Verbose logging of transform decisions (stderr). */
   debug?: boolean;
 }

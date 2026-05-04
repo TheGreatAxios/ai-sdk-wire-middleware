@@ -1,0 +1,183 @@
+{
+  "schemaVersion": 1,
+  "runId": "offline-20260504-193636",
+  "ts": "2026-05-04T19:36:36.990Z",
+  "tokenizer": "js-tiktoken/o200k_base",
+  "tools": 13,
+  "cases": 19,
+  "manual": {
+    "json": 861,
+    "compact": 490,
+    "xml": 1241,
+    "pythonDsl": 406
+  },
+  "perCall": [
+    {
+      "case": "getWeather (1 required)",
+      "json": 25,
+      "compact": 11,
+      "xml": 38,
+      "pythonDsl": 6,
+      "reductionVsJson": 0.56
+    },
+    {
+      "case": "getWeather (2 args, metric)",
+      "json": 30,
+      "compact": 16,
+      "xml": 50,
+      "pythonDsl": 11,
+      "reductionVsJson": 0.4667
+    },
+    {
+      "case": "getTime",
+      "json": 28,
+      "compact": 14,
+      "xml": 41,
+      "pythonDsl": 10,
+      "reductionVsJson": 0.5
+    },
+    {
+      "case": "sendEmail (4 args)",
+      "json": 46,
+      "compact": 30,
+      "xml": 78,
+      "pythonDsl": 25,
+      "reductionVsJson": 0.3478
+    },
+    {
+      "case": "searchProducts (mixed types)",
+      "json": 37,
+      "compact": 21,
+      "xml": 64,
+      "pythonDsl": 17,
+      "reductionVsJson": 0.4324
+    },
+    {
+      "case": "webFetch (GET)",
+      "json": 28,
+      "compact": 14,
+      "xml": 41,
+      "pythonDsl": 9,
+      "reductionVsJson": 0.5
+    },
+    {
+      "case": "calculate",
+      "json": 32,
+      "compact": 18,
+      "xml": 44,
+      "pythonDsl": 13,
+      "reductionVsJson": 0.4375
+    },
+    {
+      "case": "listFiles (recursive)",
+      "json": 30,
+      "compact": 14,
+      "xml": 50,
+      "pythonDsl": 9,
+      "reductionVsJson": 0.5333
+    },
+    {
+      "case": "setReminder",
+      "json": 47,
+      "compact": 33,
+      "xml": 74,
+      "pythonDsl": 28,
+      "reductionVsJson": 0.2979
+    },
+    {
+      "case": "askDb",
+      "json": 36,
+      "compact": 22,
+      "xml": 56,
+      "pythonDsl": 17,
+      "reductionVsJson": 0.3889
+    },
+    {
+      "case": "bookMeeting (6 args)",
+      "json": 63,
+      "compact": 44,
+      "xml": 120,
+      "pythonDsl": 41,
+      "reductionVsJson": 0.3016
+    },
+    {
+      "case": "bookMeeting (required only)",
+      "json": 52,
+      "compact": 34,
+      "xml": 98,
+      "pythonDsl": 31,
+      "reductionVsJson": 0.3462
+    },
+    {
+      "case": "updateUserProfile (nested)",
+      "json": 67,
+      "compact": 50,
+      "xml": 149,
+      "pythonDsl": 48,
+      "reductionVsJson": 0.2537
+    },
+    {
+      "case": "getWeather (unicode)",
+      "json": 27,
+      "compact": 13,
+      "xml": 40,
+      "pythonDsl": 8,
+      "reductionVsJson": 0.5185
+    },
+    {
+      "case": "sendEmail (internal quotes)",
+      "json": 52,
+      "compact": 38,
+      "xml": 82,
+      "pythonDsl": 33,
+      "reductionVsJson": 0.2692
+    },
+    {
+      "case": "askDb (long SQL)",
+      "json": 72,
+      "compact": 58,
+      "xml": 97,
+      "pythonDsl": 53,
+      "reductionVsJson": 0.1944
+    },
+    {
+      "case": "toggleFeature (boolean only)",
+      "json": 30,
+      "compact": 15,
+      "xml": 50,
+      "pythonDsl": 10,
+      "reductionVsJson": 0.5
+    },
+    {
+      "case": "analyzeSentiment (with optional)",
+      "json": 35,
+      "compact": 19,
+      "xml": 54,
+      "pythonDsl": 15,
+      "reductionVsJson": 0.4571
+    },
+    {
+      "case": "listFiles (no recursive)",
+      "json": 25,
+      "compact": 10,
+      "xml": 37,
+      "pythonDsl": 5,
+      "reductionVsJson": 0.6
+    }
+  ],
+  "totals": {
+    "json": 762,
+    "compact": 474,
+    "xml": 1263,
+    "pythonDsl": 389
+  },
+  "reductions": {
+    "compactVsJson": 0.378,
+    "xmlVsJson": -0.6575,
+    "pythonDslVsJson": 0.4895
+  },
+  "correctness": {
+    "passed": 19,
+    "total": 19
+  }
+}

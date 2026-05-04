@@ -79,25 +79,64 @@ function aggregateLive(rows: ArtifactRow[]): string {
   lines.push(`**Source:** ${rows.length} rows across ${new Set(rows.map(r => r.model)).size} models, ${new Set(rows.map(r => r.case)).size} cases`);
   lines.push('');
 
-  // Per-model table.
+  // Per-model table, grouped by provider for clarity when multiple providers are present.
   const byModel = groupBy(normalRows, r => r.model ?? 'unknown');
+
+  // Build a provider→models mapping from model slug patterns.
+  // If model slugs include provider prefixes (e.g., openai/gpt-4), we can infer.
+  // Otherwise, group all models together under a single provider label.
+  const providerLabels = new Map<string, string>();
+  // Try to detect providers from model slug patterns
+  for (const model of Object.keys(byModel)) {
+    if (model.startsWith('ollama/')) {
+      providerLabels.set(model, 'Ollama');
+    } else if (model.includes('/')) {
+      providerLabels.set(model, 'OpenRouter');
+    } else {
+      // Naked model name — likely Z.AI or direct OpenAI
+      providerLabels.set(model, 'Direct');
+    }
+  }
+  // Group models by their inferred provider.
+  const byProvider = new Map<string, string[]>();
+  for (const [model, provider] of providerLabels) {
+    const list = byProvider.get(provider) ?? [];
+    list.push(model);
+    byProvider.set(provider, list);
+  }
 
   lines.push('### Per-model output-token reduction');
   lines.push('');
-  lines.push('| Model | Mode | Equivalent | Total Calls | Total Output Tokens | Reduction vs JSON |');
-  lines.push('|-------|------|-----------:|------------:|--------------------:|------------------:|');
+  lines.push('| Provider | Model | Mode | Equivalent | Total Calls | Total Output Tokens | Reduction vs JSON |');
+  lines.push('|----------|-------|------|-----------:|------------:|--------------------:|------------------:|');
 
-  for (const [model, modelRows] of Object.entries(byModel).sort()) {
-    const jsonEq = modelRows.filter(r => r.mode === 'json' && r.judge?.verdict === 'equivalent').length;
-    const jsonTotal = modelRows.filter(r => r.mode === 'json').length;
-    const compactEq = modelRows.filter(r => r.mode === 'compact' && r.judge?.verdict === 'equivalent').length;
-    const compactTotal = modelRows.filter(r => r.mode === 'compact').length;
-    const jsonOut = modelRows.filter(r => r.mode === 'json').reduce((a, r) => a + (r.outputTokens ?? 0), 0);
-    const compactOut = modelRows.filter(r => r.mode === 'compact').reduce((a, r) => a + (r.outputTokens ?? 0), 0);
-    const reduction = jsonOut > 0 ? ((jsonOut - compactOut) / jsonOut) : 0;
+  // Sort providers: OpenRouter first, then Z.AI/Direct, then Ollama.
+  const providerOrder = ['OpenRouter', 'Direct', 'Ollama'];
+  const sortedProviders = [...byProvider.entries()].sort((a, b) => {
+    const ia = providerOrder.indexOf(a[0]);
+    const ib = providerOrder.indexOf(b[0]);
+    if (ia !== -1 && ib !== -1) return ia - ib;
+    if (ia !== -1) return -1;
+    if (ib !== -1) return 1;
+    return a[0].localeCompare(b[0]);
+  });
 
-    lines.push(`| ${pad(modelShort(model), 30)} | json | ${jsonEq} | ${jsonTotal} | ${jsonOut} | — |`);
-    lines.push(`| ${pad('', 30)} | compact | ${compactEq} | ${compactTotal} | ${compactOut} | ${pct(reduction)} |`);
+  for (const [providerName, models] of sortedProviders) {
+    for (let mi = 0; mi < models.length; mi++) {
+      const model = models[mi]!;
+      const modelRows = byModel[model]!;
+      const jsonEq = modelRows.filter(r => r.mode === 'json' && r.judge?.verdict === 'equivalent').length;
+      const jsonTotal = modelRows.filter(r => r.mode === 'json').length;
+      const compactEq = modelRows.filter(r => r.mode === 'compact' && r.judge?.verdict === 'equivalent').length;
+      const compactTotal = modelRows.filter(r => r.mode === 'compact').length;
+      const jsonOut = modelRows.filter(r => r.mode === 'json').reduce((a, r) => a + (r.outputTokens ?? 0), 0);
+      const compactOut = modelRows.filter(r => r.mode === 'compact').reduce((a, r) => a + (r.outputTokens ?? 0), 0);
+      const reduction = jsonOut > 0 ? ((jsonOut - compactOut) / jsonOut) : 0;
+
+      const provCell = mi === 0 ? providerName : '';
+      lines.push(`| ${pad(provCell, 10)} | ${pad(modelShort(model), 28)} | json | ${jsonEq} | ${jsonTotal} | ${jsonOut} | — |`);
+      lines.push(`| ${pad('', 10)} | ${pad('', 28)} | compact | ${compactEq} | ${compactTotal} | ${compactOut} | ${pct(reduction)} |`);
+    }
   }
 
   // Per-case detail.
@@ -231,7 +270,7 @@ function aggregateAgent(rows: ArtifactRow[]): string {
       if (mRows.length === 0) continue;
       const ok = mRows.filter(r => r.ok).length;
       const avgOut = mean(mRows.filter(r => r.outputTokens != null).map(r => r.outputTokens!));
-      const avgTools = mean(mRows.filter(r => r.extra?.steps).map(r => (r.extra!.steps as any[]).length));
+      const avgTools = mean(mRows.filter(r => r.extra?.steps).map(r => (r.extra as any).steps.length));
       lines.push(
         `| ${pad(task, 36)} | ${mode.padEnd(7)} | ${ok} | ${mRows.length} | ${round2(avgTools)} | ${round2(avgOut)} |`,
       );
@@ -247,6 +286,30 @@ function aggregateAgent(rows: ArtifactRow[]): string {
     const reduction = jsonTotalOut > 0 ? ((jsonTotalOut - compactTotalOut) / jsonTotalOut) * 100 : 0;
     lines.push('');
     lines.push(`**Overall output-token reduction (successful runs only):** ${pct(reduction / 100)}`);
+  }
+
+  // Pareto frontier: success rate vs output tokens
+  lines.push('');
+  lines.push('### Pareto frontier: success vs output cost');
+  lines.push('');
+  lines.push('Each (model, mode) pair is a point. Dominance means one mode has both higher success and lower cost.');
+  lines.push('');
+  lines.push('| Model | Mode | Success Rate | Total Out | Pareto Dominant? |');
+  lines.push('|-------|------|-------------:|----------:|------------------:|');
+  for (const [model, modelRows] of Object.entries(byModel).sort()) {
+    const jsonOk = modelRows.filter(r => r.mode === 'json' && r.ok).length;
+    const jsonTotal = modelRows.filter(r => r.mode === 'json').length;
+    const compactOk = modelRows.filter(r => r.mode === 'compact' && r.ok).length;
+    const compactTotal = modelRows.filter(r => r.mode === 'compact').length;
+    const jsonRate = jsonTotal > 0 ? jsonOk / jsonTotal : 0;
+    const compactRate = compactTotal > 0 ? compactOk / compactTotal : 0;
+    const jsonTotalOut = modelRows.filter(r => r.mode === 'json').reduce((a, r) => a + (r.outputTokens ?? 0), 0);
+    const compactTotalOut = modelRows.filter(r => r.mode === 'compact').reduce((a, r) => a + (r.outputTokens ?? 0), 0);
+    // Compact dominates if higher success and lower-or-equal cost
+    const dominates = compactRate > jsonRate && compactTotalOut <= jsonTotalOut ? '**compact**' :
+      (jsonRate > compactRate && jsonTotalOut <= compactTotalOut ? 'json' : 'neither');
+    lines.push(`| ${pad(modelShort(model), 30)} | json | ${pct(jsonRate)} | ${jsonTotalOut} | ${dominates === 'json' ? 'yes' : '—'} |`);
+    lines.push(`| ${pad('', 30)} | compact | ${pct(compactRate)} | ${compactTotalOut} | ${dominates === '**compact**' ? '**yes**' : '—'} |`);
   }
 
   return lines.join('\n');
