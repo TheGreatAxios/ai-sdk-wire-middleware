@@ -33,10 +33,13 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 # Finder (MacOS) folder config
 .DS_Store
 
-# benchmark artifacts (kept locally; published runs go under bench/results/published/)
-bench/results/*
-!bench/results/published/
-!bench/results/.gitkeep
+# benchmark run artifacts (individual runs stay local; publish to published/)
+bench/results/*.jsonl
+bench/results/offline-*.json
+bench/results/latest-*.json
+
+# benchmark caches
 bench/cache/*
 !bench/cache/.gitkeep
+
 .pi/agent/sandbox.json
