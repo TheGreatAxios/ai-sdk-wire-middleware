@@ -29,6 +29,18 @@
     "wire-format"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thegreataxios/ai-sdk-wire-middleware.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thegreataxios/ai-sdk-wire-middleware/issues"
+  },
+  "homepage": "https://github.com/thegreataxios/ai-sdk-wire-middleware#readme",
+  "contributors": [
+    "Sawyer Cutler <sawyer@dirtroad.dev>",
+    "Anthony Holley"
+  ],
   "peerDependencies": {
     "ai": "^6.0.0",
     "@ai-sdk/provider": "^3.0.0",
