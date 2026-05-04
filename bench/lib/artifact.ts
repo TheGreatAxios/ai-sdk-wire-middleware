@@ -9,7 +9,7 @@
  * Schema versioning is explicit so we can evolve fields without breaking
  * older artifacts.
  */
-import { appendFileSync, existsSync, readFileSync, mkdirSync, writeFileSync, symlinkSync, unlinkSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, mkdirSync, writeFileSync, symlinkSync, unlinkSync, copyFileSync } from 'node:fs';
 import { dirname, join, basename } from 'node:path';
 
 export const ARTIFACT_SCHEMA_VERSION = 1;
@@ -128,6 +128,30 @@ export function updateLatestPointer(runId: string, root = 'bench/results'): void
       /* best-effort */
     }
   }
+}
+
+/**
+ * Publish the run artifact to bench/results/published/ for git tracking.
+ * Copies the artifact file (or symlink target) to published/<runId>.jsonl.
+ */
+export function publishArtifact(runId: string, root = 'bench/results'): string | null {
+  const publishedDir = join(root, 'published');
+  if (!existsSync(publishedDir)) mkdirSync(publishedDir, { recursive: true });
+
+  // Resolve the source — follow symlink if latest-* was passed.
+  const srcName = `${runId}.jsonl`;
+  const srcPath = join(root, srcName);
+  const resolved = existsSync(srcPath) ? srcPath : null;
+  if (!resolved) return null;
+
+  const dstName = srcName;
+  const dstPath = join(publishedDir, dstName);
+  try {
+    copyFileSync(resolved, dstPath);
+  } catch {
+    return null;
+  }
+  return dstPath;
 }
 
 /** Helper used by the CLI: resolve `--resume <file>` to an existing-keys set. */

@@ -28,6 +28,7 @@ import {
   loadRows,
   updateLatestPointer,
   artifactPath,
+  publishArtifact,
   type ArtifactRow,
 } from './lib/artifact.ts';
 import {
@@ -369,6 +370,14 @@ async function main() {
   }
   console.log(`\nArtifact: ${outPath}`);
   console.log(`To rerun with skip: --resume ${outPath}`);
+
+  // Publish to bench/results/published/ for git tracking.
+  const published = publishArtifact(runId);
+  if (published) {
+    const shortName = published.split('/').pop();
+    console.log(`Published:  ${published}`);
+    console.log(`To commit:  git add bench/results/published/${shortName} && git commit -m "publish ${shortName}"`);
+  }
 }
 
 // ─────────────────────────────────────────────────────── helpers ──

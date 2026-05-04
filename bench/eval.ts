@@ -19,7 +19,7 @@ import type {
   LanguageModelV3StreamPart,
   LanguageModelV3StreamResult,
 } from '@ai-sdk/provider';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { compactTools } from '../src/index.ts';
 import { buildSystemPrompt } from '../src/system-prompt.ts';
@@ -271,5 +271,13 @@ writeFileSync(outPath, JSON.stringify(artifact, null, 2));
 const latest = join(outDir, 'latest-offline.json');
 writeFileSync(latest, JSON.stringify(artifact, null, 2));
 
+// Publish for git tracking.
+const publishedDir = join(outDir, 'published');
+if (!existsSync(publishedDir)) mkdirSync(publishedDir, { recursive: true });
+const publishedPath = join(publishedDir, `${runId}.json`);
+copyFileSync(outPath, publishedPath);
+
 console.log(`\nartifact: ${outPath}`);
 console.log(`latest:   ${latest}`);
+console.log(`\nPublished: ${publishedPath}`);
+console.log(`To commit:  git add bench/results/published/${runId}.json && git commit -m "publish ${runId}"`);

@@ -29,6 +29,7 @@ import {
   loadRows,
   updateLatestPointer,
   artifactPath,
+  publishArtifact,
   type ArtifactRow,
 } from './lib/artifact.ts';
 import { resolveModels } from './lib/models.ts';
@@ -377,6 +378,14 @@ async function main() {
     if (errors.length > 5) console.log(`  … and ${errors.length - 5} more`);
   }
   console.log(`\nArtifact: ${outPath}`);
+
+  // Publish to bench/results/published/ for git tracking.
+  const published = publishArtifact(runId);
+  if (published) {
+    const shortName = published.split('/').pop();
+    console.log(`Published:  ${published}`);
+    console.log(`To commit:  git add bench/results/published/${shortName} && git commit -m "publish ${shortName}"`);
+  }
 }
 
 await main();
