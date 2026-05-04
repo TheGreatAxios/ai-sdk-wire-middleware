@@ -37,7 +37,7 @@ function isPrimitiveLeaf(node: SchemaNode): boolean {
 }
 
 /** Render a tool as a compact one-line signature. */
-export function renderSignature(tool: FunctionTool, encoding: 'shell' | 'csv' | 'json'): string {
+export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json'): string {
   const schema = tool.inputSchema as SchemaNode;
   const desc = tool.description ? ` — ${oneLine(tool.description)}` : '';
   if (encoding === 'json') {
@@ -50,7 +50,7 @@ export function renderSignature(tool: FunctionTool, encoding: 'shell' | 'csv' | 
   const props = Object.entries(schema.properties).map(([name, node]) => {
     const opt = required.has(name) ? '' : '?';
     const t = leafTypeLabel(node as SchemaNode);
-    return encoding === 'csv' ? `${name}${opt}:${t}` : `${name}${opt}:${t}`;
+    return `${name}${opt}:${t}`;
   });
   return `${tool.name}: ${props.join(', ')}${desc}`;
 }
@@ -79,7 +79,7 @@ export function planTools(
   return tools.map(tool => {
     const schema = tool.inputSchema as SchemaNode;
     const flat = isFlatObject(schema);
-    let encoding: 'shell' | 'csv' | 'json' = options.syntax;
+    let encoding: 'wire' | 'json' = options.syntax;
     if (!flat) {
       if (options.fallbackToJson === 'error') {
         throw new Error(

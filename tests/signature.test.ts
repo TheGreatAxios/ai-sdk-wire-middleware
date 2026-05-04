@@ -43,25 +43,25 @@ describe('isFlatObject', () => {
 });
 
 describe('renderSignature', () => {
-  test('shell', () => {
-    expect(renderSignature(flatTool, 'shell')).toContain('location:string');
-    expect(renderSignature(flatTool, 'shell')).toContain('units?:"metric"|"imperial"');
+  test('wire', () => {
+    expect(renderSignature(flatTool, 'wire')).toContain('location:string');
+    expect(renderSignature(flatTool, 'wire')).toContain('units?:"metric"|"imperial"');
   });
   test('description appended', () => {
-    expect(renderSignature(flatTool, 'shell')).toMatch(/— Get weather/);
+    expect(renderSignature(flatTool, 'wire')).toMatch(/— Get weather/);
   });
 });
 
 describe('planTools', () => {
   test('flat tool stays in chosen encoding', () => {
-    const [plan] = planTools([flatTool], { syntax: 'shell', fallbackToJson: 'complex' });
-    expect(plan!.encoding).toBe('shell');
+    const [plan] = planTools([flatTool], { syntax: 'wire', fallbackToJson: 'complex' });
+    expect(plan!.encoding).toBe('wire');
   });
   test('nested tool falls back to json', () => {
-    const [plan] = planTools([nestedTool], { syntax: 'shell', fallbackToJson: 'complex' });
+    const [plan] = planTools([nestedTool], { syntax: 'wire', fallbackToJson: 'complex' });
     expect(plan!.encoding).toBe('json');
   });
   test('error mode throws', () => {
-    expect(() => planTools([nestedTool], { syntax: 'shell', fallbackToJson: 'error' })).toThrow();
+    expect(() => planTools([nestedTool], { syntax: 'wire', fallbackToJson: 'error' })).toThrow();
   });
 });

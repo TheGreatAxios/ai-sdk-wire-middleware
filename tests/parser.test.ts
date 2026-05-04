@@ -1,11 +1,9 @@
 import { describe, expect, test } from 'bun:test';
 import {
   findCallSpans,
-  parseShellBody,
-  parseCsvBody,
+  parseWireBody,
   splitNameAndBody,
-  tokenizeShell,
-  splitCsv,
+  tokenizeWire,
   encodeArgs,
   parseCalls,
 } from '../src/parser.ts';
@@ -14,7 +12,7 @@ import type { ToolPlan } from '../src/types.ts';
 const weatherPlan: ToolPlan = {
   name: 'getWeather',
   signature: 'getWeather: location, units?',
-  encoding: 'shell',
+  encoding: 'wire',
   fields: [
     { name: 'location', required: true, type: 'string' },
     { name: 'units', required: false, type: '"metric"|"imperial"' },
@@ -22,7 +20,6 @@ const weatherPlan: ToolPlan = {
   inputSchema: {},
 };
 
-const csvPlan: ToolPlan = { ...weatherPlan, encoding: 'csv' };
 const jsonPlan: ToolPlan = { ...weatherPlan, encoding: 'json', fields: [] };
 
 describe('findCallSpans', () => {
@@ -53,18 +50,18 @@ describe('splitNameAndBody', () => {
   });
 });
 
-describe('tokenizeShell', () => {
+describe('tokenizeWire', () => {
   test('quotes containing spaces', () => {
-    expect(tokenizeShell('a="hello world" b=42')).toEqual(['a="hello world"', 'b=42']);
+    expect(tokenizeWire('a="hello world" b=42')).toEqual(['a="hello world"', 'b=42']);
   });
   test('escaped quote', () => {
-    expect(tokenizeShell('msg="he said \\"hi\\""')).toEqual(['msg="he said \\"hi\\""']);
+    expect(tokenizeWire('msg="he said \\"hi\\""')).toEqual(['msg="he said \\"hi\\""']);
   });
 });
 
-describe('parseShellBody', () => {
+describe('parseWireBody', () => {
   test('basic kv', () => {
-    expect(parseShellBody('location="New York" units=metric', weatherPlan)).toEqual({
+    expect(parseWireBody('location="New York" units=metric', weatherPlan)).toEqual({
       location: 'New York',
       units: 'metric',
     });
@@ -77,40 +74,22 @@ describe('parseShellBody', () => {
         { name: 'count', required: true, type: 'int' },
       ],
     };
-    expect(parseShellBody('enabled=true count=42', plan)).toEqual({ enabled: true, count: 42 });
+    expect(parseWireBody('enabled=true count=42', plan)).toEqual({ enabled: true, count: 42 });
   });
   test('keeps unquoted strings as strings when type is string', () => {
     const plan: ToolPlan = {
       ...weatherPlan,
       fields: [{ name: 'location', required: true, type: 'string' }],
     };
-    expect(parseShellBody('location=austin', plan)).toEqual({ location: 'austin' });
+    expect(parseWireBody('location=austin', plan)).toEqual({ location: 'austin' });
   });
   test('throws when missing =', () => {
-    expect(() => parseShellBody('badtoken', weatherPlan)).toThrow();
-  });
-});
-
-describe('parseCsvBody', () => {
-  test('positional', () => {
-    expect(parseCsvBody('"New York", metric', csvPlan)).toEqual({
-      location: 'New York',
-      units: 'metric',
-    });
-  });
-  test('throws on too many args', () => {
-    expect(() => parseCsvBody('a, b, c', csvPlan)).toThrow();
-  });
-});
-
-describe('splitCsv', () => {
-  test('respects quotes', () => {
-    expect(splitCsv('"hello, world", 42, true')).toEqual(['"hello, world"', ' 42', ' true']);
+    expect(() => parseWireBody('badtoken', weatherPlan)).toThrow();
   });
 });
 
 describe('encodeArgs', () => {
-  test('shell → JSON-stringified', () => {
+  test('wire → JSON-stringified', () => {
     const json = encodeArgs('location="NYC" units=metric', weatherPlan);
     expect(JSON.parse(json)).toEqual({ location: 'NYC', units: 'metric' });
   });

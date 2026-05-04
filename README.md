@@ -80,7 +80,7 @@ Returns a `LanguageModelV3Middleware` you can pass to `wrapLanguageModel`.
 
 ```ts
 compactTools({
-  syntax: 'shell',           // 'shell' | 'csv' | 'json'   (default 'shell')
+  syntax: 'wire',            // 'wire' | 'json'   (default 'wire')
   fallbackToJson: 'complex', // 'complex' | 'error' | 'force'
   placement: 'last',         // 'first' | 'last'
   manualHeader: undefined,   // override the manual injected into the system prompt
@@ -92,15 +92,14 @@ compactTools({
 
 | `syntax` | Output |
 |---|---|
-| `shell` (default) | `<call>getWeather location="New York" units=metric</call>` |
-| `csv` | `<call>getWeather "New York", metric</call>` (positional) |
+| `wire` (default) | `<call>getWeather location="New York" units=metric</call>` |
 | `json` | `<call>getWeather {"location":"New York","units":"metric"}</call>` |
 
-`shell` is the most readable for the model, supports optional fields cleanly, and is fully whitespace-tolerant. `csv` is the most token-efficient when every field is required and primitive.
+`wire` is the most readable for the model, supports optional fields cleanly, and is fully whitespace-tolerant.
 
 #### `fallbackToJson`
 
-Tools whose input schema is **not** a flat record of primitives (i.e. nested objects, arrays, or anyOf unions) can't be expressed in `shell`/`csv` syntax. By default (`'complex'`) those individual tools fall back to `json` encoding while flat tools keep using `shell`. Use `'error'` to fail loudly, or `'force'` if you really want to flatten.
+Tools whose input schema is **not** a flat record of primitives (i.e. nested objects, arrays, or anyOf unions) can't be expressed in `wire` syntax. By default (`'complex'`) those individual tools fall back to `json` encoding while flat tools keep using `wire`. Use `'error'` to fail loudly, or `'force'` if you really want to flatten.
 
 ## How it works
 
@@ -125,7 +124,7 @@ Tools whose input schema is **not** a flat record of primitives (i.e. nested obj
 ## Caveats
 
 - **Big-model quality dip on first calls.** GPT-5/Sonnet 4.5 are heavily trained on the JSON tool protocol. They follow the compact format from a system prompt reliably, but expect a small accuracy hit on the very first call of a session before the format is in context. Benchmark on your task before claiming a Pareto win.
-- **Schema → signature is lossy.** Nested objects, arrays, and unions can't be expressed in `shell`/`csv` syntax. Those tools fall back to JSON inside `<call>`. If your toolset is mostly nested, you'll save very little.
+- **Schema → signature is lossy.** Nested objects, arrays, and unions can't be expressed in `wire` syntax. Those tools fall back to JSON inside `<call>`. If your toolset is mostly nested, you'll save very little.
 - **No `responseFormat` shenanigans.** The middleware does not force JSON mode for `toolChoice: required`. If you need hard tool-choice enforcement, use the native protocol (don't wrap that call).
 - **Output tokens > input tokens.** The system-prompt manual is ~260 tokens; the per-call savings are ~10–15 tokens. With prompt caching the manual amortizes to ~zero quickly. Without caching, you need >~25 tool calls per session to break even on tokens.
 

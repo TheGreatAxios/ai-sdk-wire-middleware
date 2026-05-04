@@ -78,11 +78,11 @@ interface OfflineArtifact {
 }
 
 function bench(runId: string): OfflineArtifact {
-  const plans = planTools(providerTools, { syntax: 'shell', fallbackToJson: 'complex' });
+  const plans = planTools(providerTools, { syntax: 'wire', fallbackToJson: 'complex' });
 
   // ── 1. Manual / tool-definition cost ──
   const nativeDefBytes = providerTools.map(nativeJsonToolDef).join('\n');
-  const compactSystem = buildSystemPrompt(plans, { syntax: 'shell', fallbackToJson: 'complex' });
+  const compactSystem = buildSystemPrompt(plans, { syntax: 'wire', fallbackToJson: 'complex' });
   const xmlManual = xmlEncodeManual(plans);
   const pyManual = pyEncodeManual(plans);
 

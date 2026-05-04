@@ -120,14 +120,12 @@ async function main() {
   const ab = args.ablations;
 
   if (ab['syntax']) {
-    // --ablation syntax=shell|csv|json: override compact with different syntaxes
+    // --ablation syntax=wire|json: override compact with different syntaxes
     const syntax = ab['syntax']!;
-    if (syntax === 'csv') {
-      modes.push({ mode: 'compact', label: 'compact (csv)', ablation: 'syntax=csv' });
-    } else if (syntax === 'json') {
+    if (syntax === 'json') {
       modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
     } else {
-      // shell is the default compact
+      // wire is the default compact
       modes.push({ mode: 'compact', label: 'compact', ablation: undefined });
     }
   } else if (ab['no-manual']) {

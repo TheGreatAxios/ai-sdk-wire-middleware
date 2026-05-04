@@ -4,7 +4,7 @@ import { serializeCall } from '../src/serialize.ts';
 import { planTools } from '../src/signature.ts';
 import { cases, providerTools } from '../bench/tools.ts';
 
-const plans = planTools(providerTools, { syntax: 'shell', fallbackToJson: 'complex' });
+const plans = planTools(providerTools, { syntax: 'wire', fallbackToJson: 'complex' });
 const planByName = new Map(plans.map(p => [p.name, p]));
 
 describe('round-trip: bench compactCall → parseCalls → expected nativeCall', () => {

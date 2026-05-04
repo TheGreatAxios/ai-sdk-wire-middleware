@@ -11,11 +11,7 @@ export function serializeCall(toolName: string, input: string, plan: ToolPlan | 
   if (!plan || plan.encoding === 'json' || !args || typeof args !== 'object') {
     return `${CALL_OPEN}${toolName} ${input || '{}'}${CALL_CLOSE}`;
   }
-  if (plan.encoding === 'csv') {
-    const cells = plan.fields.map(f => formatValue((args as Record<string, unknown>)[f.name], f.type));
-    return `${CALL_OPEN}${toolName} ${cells.join(', ')}${CALL_CLOSE}`;
-  }
-  // shell
+  // wire
   const parts: string[] = [];
   for (const [k, v] of Object.entries(args)) {
     const fieldType = plan.fields.find(f => f.name === k)?.type;
@@ -44,7 +40,7 @@ export function formatValue(v: unknown, type: string | undefined): string {
 }
 
 function needsQuoting(s: string): boolean {
-  return s.length === 0 || /[\s"'=,<>]/.test(s);
+  return s.length === 0 || /[\s"'=<>]/.test(s);
 }
 
 /** Serialize a tool-result message body back into a compact form for the model. */

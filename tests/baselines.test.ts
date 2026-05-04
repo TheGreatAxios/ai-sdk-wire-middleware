@@ -4,7 +4,7 @@ import { pyEncodeCall, pyEncodeManual } from '../bench/encoders/python-dsl.ts';
 import { planTools } from '../src/signature.ts';
 import { cases, providerTools } from '../bench/tools.ts';
 
-const plans = planTools(providerTools, { syntax: 'shell', fallbackToJson: 'complex' });
+const plans = planTools(providerTools, { syntax: 'wire', fallbackToJson: 'complex' });
 
 describe('xml-anthropic encoder', () => {
   for (const c of cases) {

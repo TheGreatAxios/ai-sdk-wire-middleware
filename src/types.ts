@@ -4,11 +4,10 @@ import type { LanguageModelV3FunctionTool } from '@ai-sdk/provider';
 export interface CompactToolsOptions {
   /**
    * Wire syntax used inside `<call>…</call>`.
-   * - `shell` (default): `<call>name key="value" n=42 ok=true</call>`
-   * - `csv`: `<call>name: "value", 42, true</call>` (positional, comma separated)
+   * - `wire` (default): `<call>name key="value" n=42 ok=true</call>`
    * - `json`: `<call>name {"key":"value"}</call>` (no compaction; useful as a fallback)
    */
-  syntax?: 'shell' | 'csv' | 'json';
+  syntax?: 'wire' | 'json';
   /**
    * What to do when a tool's input schema is not a flat record of primitives.
    * - `complex` (default): use JSON inside `<call>` for that tool only
@@ -34,8 +33,8 @@ export interface ToolPlan {
   /** Compact positional signature, e.g. `getWeather: location, units?` */
   signature: string;
   /** Wire encoding chosen for this tool. */
-  encoding: 'shell' | 'csv' | 'json';
-  /** Ordered list of expected fields (for csv mode). */
+  encoding: 'wire' | 'json';
+  /** Ordered list of expected fields (for wire mode). */
   fields: Array<{ name: string; required: boolean; type: string }>;
   /** Original JSON Schema for coercion. */
   inputSchema: unknown;

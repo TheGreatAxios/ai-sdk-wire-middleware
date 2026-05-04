@@ -3,11 +3,9 @@ import {
   encodeArgs,
   findCallSpans,
   parseCalls,
-  parseCsvBody,
-  parseShellBody,
-  splitCsv,
+  parseWireBody,
   splitNameAndBody,
-  tokenizeShell,
+  tokenizeWire,
   ToolReduceParseError,
   coerceValue,
 } from '../src/parser.ts';
@@ -16,7 +14,7 @@ import type { ToolPlan } from '../src/types.ts';
 const weatherPlan: ToolPlan = {
   name: 'getWeather',
   signature: 'getWeather: location, units?',
-  encoding: 'shell',
+  encoding: 'wire',
   fields: [
     { name: 'location', required: true, type: 'string' },
     { name: 'units', required: false, type: '"metric"|"imperial"' },
@@ -27,7 +25,7 @@ const weatherPlan: ToolPlan = {
 const sendEmailPlan: ToolPlan = {
   name: 'sendEmail',
   signature: 'sendEmail: to, subject, body, priority?',
-  encoding: 'shell',
+  encoding: 'wire',
   fields: [
     { name: 'to', required: true, type: 'string' },
     { name: 'subject', required: true, type: 'string' },
@@ -40,7 +38,7 @@ const sendEmailPlan: ToolPlan = {
 const calculatePlan: ToolPlan = {
   name: 'calculate',
   signature: 'calculate: expression',
-  encoding: 'shell',
+  encoding: 'wire',
   fields: [{ name: 'expression', required: true, type: 'string' }],
   inputSchema: {},
 };
@@ -52,8 +50,6 @@ const jsonPlan: ToolPlan = {
   fields: [],
   inputSchema: {},
 };
-
-const csvWeatherPlan: ToolPlan = { ...weatherPlan, encoding: 'csv' };
 
 describe('findCallSpans — edge cases', () => {
   test('no calls returns empty', () => {
@@ -109,37 +105,37 @@ describe('splitNameAndBody — edge cases', () => {
   });
 });
 
-describe('tokenizeShell — edge cases', () => {
+describe('tokenizeWire — edge cases', () => {
   test('multiple consecutive spaces collapse to delimiter', () => {
-    expect(tokenizeShell('a=1    b=2')).toEqual(['a=1', 'b=2']);
+    expect(tokenizeWire('a=1    b=2')).toEqual(['a=1', 'b=2']);
   });
 
   test('tab and newline are also delimiters', () => {
-    expect(tokenizeShell('a=1\tb=2\nc=3')).toEqual(['a=1', 'b=2', 'c=3']);
+    expect(tokenizeWire('a=1\tb=2\nc=3')).toEqual(['a=1', 'b=2', 'c=3']);
   });
 
   test('single-quoted values with internal spaces', () => {
-    expect(tokenizeShell("msg='hello world'")).toEqual(["msg='hello world'"]);
+    expect(tokenizeWire("msg='hello world'")).toEqual(["msg='hello world'"]);
   });
 
   test('escaped backslash inside quotes', () => {
-    expect(tokenizeShell('p="a\\\\b"')).toEqual(['p="a\\\\b"']);
+    expect(tokenizeWire('p="a\\\\b"')).toEqual(['p="a\\\\b"']);
   });
 
   test('empty input returns empty list', () => {
-    expect(tokenizeShell('')).toEqual([]);
+    expect(tokenizeWire('')).toEqual([]);
   });
 
   test('only whitespace returns empty list', () => {
-    expect(tokenizeShell('    \t  \n ')).toEqual([]);
+    expect(tokenizeWire('    \t  \n ')).toEqual([]);
   });
 
   test('quoted value containing equals', () => {
-    expect(tokenizeShell('expr="a=b+c"')).toEqual(['expr="a=b+c"']);
+    expect(tokenizeWire('expr="a=b+c"')).toEqual(['expr="a=b+c"']);
   });
 
   test('newline embedded in quoted value via escape sequence', () => {
-    expect(tokenizeShell('msg="line1\\nline2"')).toEqual(['msg="line1\\nline2"']);
+    expect(tokenizeWire('msg="line1\\nline2"')).toEqual(['msg="line1\\nline2"']);
   });
 });
 
@@ -174,18 +170,18 @@ describe('coerceValue — edge cases', () => {
   });
 });
 
-describe('parseShellBody — edge cases', () => {
+describe('parseWireBody — edge cases', () => {
   test('empty body returns empty object', () => {
-    expect(parseShellBody('', weatherPlan)).toEqual({});
+    expect(parseWireBody('', weatherPlan)).toEqual({});
   });
 
   test('escaped quotes inside string value', () => {
-    const out = parseShellBody('body="he said \\"hi\\""', sendEmailPlan);
+    const out = parseWireBody('body="he said \\"hi\\""', sendEmailPlan);
     expect(out).toEqual({ body: 'he said "hi"' });
   });
 
   test('special characters in value (commas, parens, math)', () => {
-    const out = parseShellBody('expression="(12 + 7) * 3, then squared"', calculatePlan);
+    const out = parseWireBody('expression="(12 + 7) * 3, then squared"', calculatePlan);
     expect(out['expression']).toBe('(12 + 7) * 3, then squared');
   });
 
@@ -194,7 +190,7 @@ describe('parseShellBody — edge cases', () => {
       ...weatherPlan,
       fields: [{ name: 'max_results_2', required: true, type: 'int' }],
     };
-    expect(parseShellBody('max_results_2=5', plan)).toEqual({ max_results_2: 5 });
+    expect(parseWireBody('max_results_2=5', plan)).toEqual({ max_results_2: 5 });
   });
 
   test('boolean false coerces correctly', () => {
@@ -202,13 +198,13 @@ describe('parseShellBody — edge cases', () => {
       ...weatherPlan,
       fields: [{ name: 'enabled', required: true, type: 'boolean' }],
     };
-    expect(parseShellBody('enabled=false', plan)).toEqual({ enabled: false });
+    expect(parseWireBody('enabled=false', plan)).toEqual({ enabled: false });
   });
 
   test('throws ToolReduceParseError with toolName when token is malformed', () => {
     let caught: ToolReduceParseError | null = null;
     try {
-      parseShellBody('justAToken', weatherPlan);
+      parseWireBody('justAToken', weatherPlan);
     } catch (e) {
       caught = e as ToolReduceParseError;
     }
@@ -219,44 +215,13 @@ describe('parseShellBody — edge cases', () => {
 
   test('very long value is preserved', () => {
     const big = 'x'.repeat(5_000);
-    const out = parseShellBody(`body="${big}"`, sendEmailPlan);
+    const out = parseWireBody(`body="${big}"`, sendEmailPlan);
     expect((out['body'] as string).length).toBe(5_000);
   });
 
   test('multiline body parses keys split across lines', () => {
-    const out = parseShellBody('location="NYC"\n  units=metric', weatherPlan);
+    const out = parseWireBody('location="NYC"\n  units=metric', weatherPlan);
     expect(out).toEqual({ location: 'NYC', units: 'metric' });
-  });
-});
-
-describe('parseCsvBody — edge cases', () => {
-  test('empty body returns empty object', () => {
-    expect(parseCsvBody('', csvWeatherPlan)).toEqual({});
-  });
-
-  test('positional with quoted comma in value', () => {
-    expect(parseCsvBody('"Austin, TX", metric', csvWeatherPlan)).toEqual({
-      location: 'Austin, TX',
-      units: 'metric',
-    });
-  });
-
-  test('partial positional fills only declared prefix', () => {
-    expect(parseCsvBody('"Austin"', csvWeatherPlan)).toEqual({ location: 'Austin' });
-  });
-});
-
-describe('splitCsv — edge cases', () => {
-  test('escaped quote inside quoted value', () => {
-    expect(splitCsv('"he said \\"hi\\"", 1')).toEqual(['"he said \\"hi\\""', ' 1']);
-  });
-
-  test('trailing empty cell preserved', () => {
-    expect(splitCsv('a,b,')).toEqual(['a', 'b', '']);
-  });
-
-  test('single value, no commas', () => {
-    expect(splitCsv('only')).toEqual(['only']);
   });
 });
 
@@ -273,7 +238,7 @@ describe('encodeArgs — edge cases', () => {
     expect(JSON.parse(encodeArgs('', jsonPlan))).toEqual({});
   });
 
-  test('shell with no body returns "{}"', () => {
+  test('wire with no body returns "{}"', () => {
     expect(JSON.parse(encodeArgs('', weatherPlan))).toEqual({});
   });
 

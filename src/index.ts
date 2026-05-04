@@ -19,13 +19,13 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
  *
  * const model = wrapLanguageModel({
  *   model: anthropic('claude-sonnet-4-5'),
- *   middleware: compactTools({ syntax: 'shell', fallbackToJson: 'complex' }),
+ *   middleware: compactTools({ fallbackToJson: 'complex' }),
  * });
  * ```
  */
 export function compactTools(options: CompactToolsOptions = {}): LanguageModelV3Middleware {
   const opts = {
-    syntax: options.syntax ?? 'shell',
+    syntax: options.syntax ?? 'wire',
     fallbackToJson: options.fallbackToJson ?? 'complex',
     placement: options.placement ?? 'last',
     manualHeader: options.manualHeader,

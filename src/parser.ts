@@ -65,10 +65,7 @@ export function encodeArgs(argsBody: string, plan: ToolPlan): string {
   if (plan.encoding === 'json') {
     return parseJsonBody(argsBody);
   }
-  if (plan.encoding === 'csv') {
-    return JSON.stringify(parseCsvBody(argsBody, plan));
-  }
-  return JSON.stringify(parseShellBody(argsBody, plan));
+  return JSON.stringify(parseWireBody(argsBody, plan));
 }
 
 function parseJsonBody(body: string): string {
@@ -91,10 +88,10 @@ function parseJsonBody(body: string): string {
 }
 
 /** key=value pairs; values may be quoted with " or '. */
-export function parseShellBody(body: string, plan: ToolPlan): Record<string, unknown> {
+export function parseWireBody(body: string, plan: ToolPlan): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!body) return out;
-  const tokens = tokenizeShell(body);
+  const tokens = tokenizeWire(body);
   for (const tok of tokens) {
     const eq = tok.indexOf('=');
     if (eq === -1) {
@@ -112,11 +109,11 @@ export function parseShellBody(body: string, plan: ToolPlan): Record<string, unk
 }
 
 /**
- * Shell-ish tokenizer. Splits on whitespace except inside matched quotes.
+ * Whitespace-delimited tokenizer. Splits on whitespace except inside matched quotes.
  * A token may contain an `=` followed by a quoted string. Backslash escapes
  * inside quotes are honored: \", \\, \n, \t.
  */
-export function tokenizeShell(input: string): string[] {
+export function tokenizeWire(input: string): string[] {
   const out: string[] = [];
   let i = 0;
   let cur = '';
@@ -193,59 +190,4 @@ function unquote(s: string): string {
   });
 }
 
-/** Parse positional CSV body, mapping in declared field order. Quoted strings supported. */
-export function parseCsvBody(body: string, plan: ToolPlan): Record<string, unknown> {
-  if (!body) return {};
-  const cells = splitCsv(body);
-  const out: Record<string, unknown> = {};
-  // Required fields first, then optionals — preserve declared order.
-  const order = plan.fields;
-  if (cells.length > order.length) {
-    throw new ToolReduceParseError(
-      `Tool "${plan.name}" expected ≤${order.length} positional args, got ${cells.length}`,
-      { toolName: plan.name, body },
-    );
-  }
-  for (let i = 0; i < cells.length; i++) {
-    const field = order[i]!;
-    out[field.name] = coerceValue(cells[i]!.trim(), field.type);
-  }
-  return out;
-}
 
-export function splitCsv(input: string): string[] {
-  const out: string[] = [];
-  let i = 0;
-  let cur = '';
-  let quote: string | null = null;
-  while (i < input.length) {
-    const ch = input[i]!;
-    if (quote) {
-      if (ch === '\\' && i + 1 < input.length) {
-        cur += ch + input[i + 1]!;
-        i += 2;
-        continue;
-      }
-      cur += ch;
-      if (ch === quote) quote = null;
-      i++;
-      continue;
-    }
-    if (ch === '"' || ch === "'") {
-      quote = ch;
-      cur += ch;
-      i++;
-      continue;
-    }
-    if (ch === ',') {
-      out.push(cur);
-      cur = '';
-      i++;
-      continue;
-    }
-    cur += ch;
-    i++;
-  }
-  if (cur.length || out.length) out.push(cur);
-  return out;
-}
