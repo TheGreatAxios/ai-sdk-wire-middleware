@@ -513,10 +513,8 @@ export const cases: ToolCase[] = [
       },
     },
     compactCall:
-      '<call>bookMeeting ' +
-      '{"title":"Sprint Review","date":"2026-05-15","duration":60,' +
-      '"attendees":["alice@co.com","bob@co.com"],' +
-      '"room":"A","requiresProjector":true}</call>',
+      '<call>bookMeeting title="Sprint Review" date=2026-05-15 duration=60 ' +
+      'attendees=["alice@co.com","bob@co.com"] room="A" requiresProjector=true</call>',
   },
   {
     name: 'bookMeeting (required only)',
@@ -534,9 +532,8 @@ export const cases: ToolCase[] = [
       },
     },
     compactCall:
-      '<call>bookMeeting ' +
-      '{"title":"Quick Sync","date":"2026-06-01","duration":30,' +
-      '"attendees":["me@co.com"],"room":"B"}</call>',
+      '<call>bookMeeting title="Quick Sync" date=2026-06-01 duration=30 ' +
+      'attendees=["me@co.com"] room="B"</call>',
   },
   {
     name: 'updateUserProfile (nested)',
@@ -556,11 +553,10 @@ export const cases: ToolCase[] = [
       },
     },
     compactCall:
-      '<call>updateUserProfile ' +
-      '{"userId":"abc123",' +
-      '"profile":{"displayName":"Alice","bio":"Engineer",' +
-      '"address":{"street":"123 Main St","city":"Austin","country":"US"},' +
-      '"preferences":{"theme":"dark","notifications":false}}}</call>',
+      '<call>updateUserProfile userId=abc123 profile.displayName=Alice ' +
+      'profile.bio=Engineer profile.address.street="123 Main St" ' +
+      'profile.address.city=Austin profile.address.country=US ' +
+      'profile.preferences.theme=dark profile.preferences.notifications=false</call>',
   },
   {
     name: 'getWeather (unicode)',

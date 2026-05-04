@@ -3,14 +3,16 @@ import type { CompactToolsOptions, ToolPlan } from './types.ts';
 const DEFAULT_HEADER = `# Wire format
 
 Instead of JSON function calls, use:
-  <call>getWeather location="Austin" units=metric</call>
-  <call>createUser userId="abc" profile[name="Alice" role="admin"]</call>
+  <call>getWeather location=Austin units=metric</call>
+  <call>sendEmail to=user@co.com subject="Meeting" body='Said "hello"' priority=high</call>
 
 Values:
-  - Strings: text="hello world"
+  - Bare words: text=hello  (no quotes needed if no spaces/special chars)
+  - Double quotes: text="hello world"  (when value has spaces)
+  - Single quotes: text='said "hi"'  (when value has double quotes inside)
   - Unquoted: numbers, booleans, null
-  - Nesting: parent[child=val]
-  - Arrays: tags=["a","b"]
+  - Arrays: tags=["a","b"]  (JSON array syntax)
+  - Nested: profile.displayName=Alice  (dot paths for nested objects)
   - Tools marked <json> use: {"key":"val"}
 
 No native JSON tool_calls. Only <call>…</call> tags are parsed.`;

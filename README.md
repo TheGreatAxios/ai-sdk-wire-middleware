@@ -1,7 +1,7 @@
 # ai-sdk-wire-middleware
 
 > Compact-syntax tool calling for the [Vercel AI SDK v6](https://ai-sdk.dev).  
-> Drops tool-call **output tokens by 40–60%** on agent loops by replacing verbose JSON `tool_use` blocks with a one-line `<call>name k=v</call>` wire format — while keeping `streamText`, `generateText`, and multi-step tool execution working unchanged.
+> Drops tool-call **output tokens by 19–60%** (35.7% overall) on agent loops by replacing verbose JSON `tool_use` blocks with a one-line `<call>name k=v</call>` wire format — while keeping `streamText`, `generateText`, and multi-step tool execution working unchanged.
 
 [![npm](https://img.shields.io/npm/v/ai-sdk-wire-middleware)](https://www.npmjs.com/package/ai-sdk-wire-middleware)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -56,18 +56,20 @@ Per-step output tokens are **not** cached. Every step of an agent loop pays the 
 
 | Case | Native JSON | Compact | Reduction |
 |---|---|---|---|
-| `getWeather(location)` | 23 t | 11 t | **2.09×** |
-| `getTime(timezone)` | 24 t | 11 t | **2.18×** |
-| `webFetch(url)` | 25 t | 12 t | **2.08×** |
-| `sendEmail(to, subject, body, priority)` | 40 t | 25 t | **1.60×** |
-| `searchProducts(query, max, inStock)` | 36 t | 23 t | **1.57×** |
-| 10-step agent loop (full bench) | 296 t | 163 t | **44.9% less** |
+| `getWeather(location)` | 25 t | 11 t | **56.0%** |
+| `getTime(timezone)` | 28 t | 14 t | **50.0%** |
+| `webFetch(url)` | 28 t | 14 t | **50.0%** |
+| `sendEmail(to, subject, body, priority)` | 46 t | 30 t | **34.8%** |
+| `searchProducts(query, max, inStock)` | 37 t | 21 t | **43.2%** |
+| `toggleFeature(name, enable)` | 30 t | 15 t | **50.0%** |
+| `listFiles(directory, ?recursive)` | 25–30 t | 10–14 t | **53–60%** |
+| 19-case full bench (13 tools) | 762 t | 490 t | **35.7% less** |
 
-System-prompt overhead also flips in your favor as the tool catalogue grows: with 9 tools the compact manual is **177 tokens smaller** than the equivalent JSON tool-def block.
+System-prompt overhead also flips in your favor as the tool catalogue grows: with 13 tools the compact manual is **393 tokens smaller** than the equivalent JSON tool-def block (861 → 468).
 
-> `bun run bench` to reproduce locally. Numbers use a 4-char-per-token estimate; actual savings track within ~10%.
+> `bun run bench` to reproduce locally. Numbers use a real BPE tokenizer (`o200k_base`) via `js-tiktoken`.
 
-The system-prompt manual (~260 tokens) is a one-time cost — prompt caching makes it effectively free after the first call.
+The system-prompt manual (~468 tokens for 13 tools) is a one-time cost — prompt caching makes it effectively free after the first call.
 
 ---
 
@@ -143,7 +145,7 @@ Tools whose input schema is **not** a flat record of primitives (nested objects,
 - **Big-model quality dip on first calls.** GPT-5 and Sonnet 4.5 are heavily trained on the JSON tool protocol. They follow the compact format from a system prompt reliably, but expect a small accuracy hit on the very first call of a session before the format is in context. Benchmark on your task before claiming a Pareto win.
 - **Schema → signature is lossy.** Nested objects, arrays, and unions can't be expressed in `wire` syntax. Those tools fall back to JSON inside `<call>`. If your toolset is mostly nested, you'll save very little.
 - **No `responseFormat` shenanigans.** The middleware does not force JSON mode for `toolChoice: required`. If you need hard tool-choice enforcement, use the native protocol (don't wrap that call).
-- **Output tokens > input tokens.** The system-prompt manual is ~260 tokens; the per-call savings are ~10–15 tokens. With prompt caching the manual amortizes to ~zero quickly. Without caching, you need >~25 tool calls per session to break even.
+- **Output tokens > input tokens.** The system-prompt manual is ~468 tokens (13 tools); the per-call savings are ~10–20 tokens. With prompt caching the manual amortizes to ~zero quickly. Without caching, you need >~25 tool calls per session to break even.
 
 ---
 
@@ -158,10 +160,10 @@ bun run bench
 Runs against a deterministic mock model and reports:
 
 - Token cost of native JSON tool defs vs. compact system prompt
-- Per-call output cost across **9 tools / 10 representative cases** (`getWeather`, `getTime`, `sendEmail`, `searchProducts`, `webFetch`, `calculate`, `listFiles`, `setReminder`, `askDb`)
+- Per-call output cost across **13 tools / 19 representative cases** (flat tools like `getWeather`, `getTime`, `toggleFeature`, mixed-type tools like `searchProducts`, `sendEmail`, and complex tools like `bookMeeting`, `updateUserProfile` that fall back to JSON syntax)
 - Round-trip correctness — every test case must parse back into the same JSON `input` the native protocol would have produced
 
-### Live (real LLM via OpenRouter)
+### Live (real LLM via OpenRouter or any OpenAI-compatible provider)
 
 ```sh
 cp .env.example .env
@@ -171,15 +173,17 @@ bun run bench:live
 
 The live benchmark:
 
-1. Calls a real model via OpenRouter once per case in **JSON mode** (no middleware) and once in **compact mode** (with `compactTools()`).
-2. Reports actual `inputTokens` / `outputTokens` from the provider, latency, and whether the emitted `tool-call` matches the ground-truth invocation.
-3. Defaults to `minimax/minimax-m2.5:free` (zero cost). Override with:
+1. Calls a real model once per case in **JSON mode** (no middleware) and once in **compact mode** (with `compactTools()`).
+2. Reports actual `inputTokens` / `outputTokens` from the provider, latency, and whether the emitted `tool-call` matches the ground-truth invocation (via LLM judge).
+3. Supports OpenRouter and any OpenAI-compatible provider (Z.AI, Together, Groq, etc.). Set `ZAI_BASE_URL`, `ZAI_API_KEY`, and `ZAI_MODEL` to skip OpenRouter.
+4. Supports ablation studies via `--ablation` flags (e.g. `syntax=json`, `no-manual`, `placement=first`).
+5. Defaults to 3 reps per cell. Override:
 
    ```sh
-   OPENROUTER_MODEL=qwen/qwen3-coder:free bun run bench:live
+   bun run bench:live --models minimax/minimax-m2.5:free --reps 1 --cases 'getWeather (1 required),getTime'
    ```
 
-Other free models worth trying: `meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-chat-v3.1:free`, `google/gemini-2.0-flash-exp:free`. Smaller free models — the ones that benefit most from the compact format — are the primary target.
+Other good free models to try: `qwen/qwen3-coder:free`, `meta-llama/llama-3.3-70b-instruct:free`, `deepseek/deepseek-chat-v3.1:free`, `google/gemini-2.0-flash-exp:free`. Smaller models — the ones that benefit most from the compact format — are the primary target.
 
 ---
 
@@ -189,7 +193,7 @@ Other free models worth trying: `meta-llama/llama-3.3-70b-instruct:free`, `deeps
 bun test
 ```
 
-36 tests cover the parser, signature compiler, transform-params, wrap-generate, wrap-stream (including character-level streaming and split-tag handling), and history rewriting.
+218 tests cover the parser, signature compiler, transform-params, wrap-generate, wrap-stream (including character-level streaming and split-tag handling), history rewriting, serialization, artifact I/O, and edge cases (unicode, internal quotes, long SQL, nested schemas, multiple calls).
 
 ---
 

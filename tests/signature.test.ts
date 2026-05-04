@@ -57,8 +57,43 @@ describe('planTools', () => {
     const [plan] = planTools([flatTool], { syntax: 'wire', fallbackToJson: 'complex' });
     expect(plan!.encoding).toBe('wire');
   });
-  test('nested tool falls back to json', () => {
+  test('shallow nested tool uses wire with dot paths', () => {
     const [plan] = planTools([nestedTool], { syntax: 'wire', fallbackToJson: 'complex' });
+    expect(plan!.encoding).toBe('wire');
+    expect(plan!.fields.some(f => f.name.includes('.'))).toBe(true);
+  });
+
+  test('deeply nested tool still falls back to json', () => {
+    const deepTool: FunctionTool = {
+      type: 'function',
+      name: 'deepNested',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          a: {
+            type: 'object',
+            properties: {
+              b: {
+                type: 'object',
+                properties: {
+                  c: {
+                    type: 'object',
+                    properties: {
+                      d: { type: 'string' },
+                    },
+                    required: ['d'],
+                  },
+                },
+                required: ['c'],
+              },
+            },
+            required: ['b'],
+          },
+        },
+        required: ['a'],
+      },
+    };
+    const [plan] = planTools([deepTool], { syntax: 'wire', fallbackToJson: 'complex' });
     expect(plan!.encoding).toBe('json');
   });
   test('error mode throws', () => {

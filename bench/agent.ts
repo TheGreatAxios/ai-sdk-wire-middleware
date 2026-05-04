@@ -16,11 +16,20 @@
  *   # Or use any OpenAI-compatible provider (no OpenRouter key needed):
  *   ZAI_BASE_URL=https://api.z.ai/v1 ZAI_API_KEY=sk-... ZAI_MODEL=glm-4.5-air:free \
  *     bun run bench/agent.ts --reps 1 --cases tx-cities-weather-email
+ *
+ *   # Multiple models per provider in one run:
+ *   OPENROUTER_API_KEY=sk-or-... ZAI_BASE_URL=... ZAI_API_KEY=... \
+ *     bun run bench/agent.ts --provider-models openrouter=anthropic/claude-sonnet-4.5,openai/gpt-4.1 \
+ *                             --provider-models zai=glm-4.5-air:free,deepseek/deepseek-v3.1 \
+ *     --reps 1
+ *
+ *   # Or via env var model lists (no --provider-models needed):
+ *   OPENROUTER_API_KEY=... OPENROUTER_MODELS=anthropic/claude-sonnet-4.5,openai/gpt-4.1 \
+ *   ZAI_BASE_URL=... ZAI_API_KEY=... ZAI_MODELS=glm-4.5-air:free,deepseek/deepseek-v3.1 \
+ *     bun run bench/agent.ts --reps 1
  */
 import { generateText, wrapLanguageModel, tool, zodSchema } from 'ai';
 import { z } from 'zod';
-import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import { createOpenAI } from '@ai-sdk/openai';
 import { compactTools } from '../src/index.ts';
 import { parseArgs, helpText } from './lib/cli.ts';
 import {
@@ -33,6 +42,7 @@ import {
   type ArtifactRow,
 } from './lib/artifact.ts';
 import { resolveModels } from './lib/models.ts';
+import { resolveProviders, type ProviderId, type ProviderConfig, type ResolvedProviders } from './lib/providers.ts';
 import { agentTasks, type AgentStep, type AgentTask } from './agent-tasks.ts';
 
 // Stub tool responses for deterministic checking.
@@ -162,18 +172,14 @@ async function main() {
     process.exit(0);
   }
 
-  // ── Providers ──
-  const zaiBaseUrl = process.env['ZAI_BASE_URL'];
-  const zaiApiKey = process.env['ZAI_API_KEY'];
-  const zaiModel  = process.env['ZAI_MODEL'];
-  const zaiClient = zaiBaseUrl && zaiApiKey && zaiModel
-    ? createOpenAI({ baseURL: zaiBaseUrl.replace(/\/$/, '') + '/', apiKey: zaiApiKey })
-    : null;
+  // ── Resolve providers and their models ──
+  const defaultModels = resolveModels(args.models).map(m => m.slug);
+  const resolved: ResolvedProviders = resolveProviders({
+    providerModels: args.providerModels,
+    defaultModels: defaultModels.length > 0 ? defaultModels : undefined,
+  });
 
-  const openrouterApiKey = process.env['OPENROUTER_API_KEY'];
-  const openrouter = openrouterApiKey ? createOpenRouter({ apiKey: openrouterApiKey }) : null;
-
-  if (!zaiClient && !openrouter) {
+  if (resolved.providers.length === 0) {
     console.error('✗ No provider configured. Set either:');
     console.error('    OPENROUTER_API_KEY  — or —');
     console.error('    ZAI_BASE_URL + ZAI_API_KEY + ZAI_MODEL');
@@ -184,7 +190,6 @@ async function main() {
   const kind: ArtifactRow['kind'] = 'agent';
   const runId = newRunId(kind);
   const outPath = args.out ?? artifactPath(runId);
-  const models = resolveModels(args.models, zaiClient ? zaiModel : undefined);
 
   // Filter tasks by --cases CSV if provided.
   let activeTasks: AgentTask[] = agentTasks;
@@ -197,27 +202,39 @@ async function main() {
     }
   }
 
+  // Build a map from model slug to its provider for routing.
+  const modelToProvider = new Map<string, ProviderConfig>();
+  for (const p of resolved.providers) {
+    for (const slug of p.models) {
+      modelToProvider.set(slug, p);
+    }
+  }
+
   // Build cell plan.
   interface Cell {
     model: string;
     taskName: string;
     mode: 'json' | 'compact';
     rep: number;
+    providerId: ProviderId;
     key: string;
   }
 
   const cells: Cell[] = [];
-  for (const m of models) {
-    for (const t of activeTasks) {
-      for (const mode of ['json', 'compact'] as const) {
-        for (let rep = 1; rep <= reps; rep++) {
-          cells.push({
-            model: m.slug,
-            taskName: t.name,
-            mode,
-            rep,
-            key: `agent|${m.slug}|${t.name}|${mode}|${rep}|_`,
-          });
+  for (const p of resolved.providers) {
+    for (const mSlug of p.models) {
+      for (const t of activeTasks) {
+        for (const mode of ['json', 'compact'] as const) {
+          for (let rep = 1; rep <= reps; rep++) {
+            cells.push({
+              model: mSlug,
+              taskName: t.name,
+              mode,
+              rep,
+              providerId: p.id,
+              key: `agent|${mSlug}|${t.name}|${mode}|${rep}|_`,
+            });
+          }
         }
       }
     }
@@ -237,7 +254,8 @@ async function main() {
   console.log(`runId:       ${runId}`);
   console.log(`artifact:    ${outPath}`);
   if (args.resume) console.log(`resume:      ${args.resume}  (${skipSet.size} existing, ${pending.length} pending)`);
-  console.log(`models:      ${models.map(m => m.label).join(', ')}`);
+  console.log(`providers:   ${resolved.providers.map(p => `${p.id}(${p.models.length} models)`).join(', ')}`);
+  console.log(`models:      ${resolved.allModelSlugs.join(', ')}`);
   console.log(`tasks:       ${activeTasks.map(t => t.name).join(', ')}`);
   console.log(`reps:        ${reps}`);
   console.log(`total cells: ${cells.length} (${pending.length} pending)\n`);
@@ -257,16 +275,13 @@ async function main() {
 
   for (const cell of pending) {
     const task = activeTasks.find(t => t.name === cell.taskName)!;
-    // Resolve the model provider — use ZAI client when the cell model matches ZAI_MODEL.
-    const useZai = zaiClient && zaiModel && cell.model === zaiModel;
-    if (!useZai && !openrouter) {
-      console.error(`✗ Model "${cell.model}" requires OpenRouter but no OPENROUTER_API_KEY is set.`);
-      console.error('  Either set OPENROUTER_API_KEY or use a model matching ZAI_MODEL.');
-      process.exit(1);
+    // Route to the correct provider based on the model slug.
+    const provider = modelToProvider.get(cell.model);
+    if (!provider) {
+      console.error(`✗ No provider configured for model "${cell.model}". Skipping.`);
+      continue;
     }
-    const rawModel = useZai
-      ? zaiClient!.chat(cell.model)
-      : openrouter!.chat(cell.model);
+    const rawModel = provider.chatModel(cell.model);
     const selectedTools = buildStubTools(task);
     const model = cell.mode === 'compact'
       ? wrapLanguageModel({ model: rawModel, middleware: compactTools() })

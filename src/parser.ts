@@ -65,7 +65,13 @@ export function encodeArgs(argsBody: string, plan: ToolPlan): string {
   if (plan.encoding === 'json') {
     return parseJsonBody(argsBody);
   }
-  return JSON.stringify(parseWireBody(argsBody, plan));
+  const flat = parseWireBody(argsBody, plan);
+  // Check if any plan fields use dot paths (nested flattening).
+  const hasDotPaths = plan.fields.some(f => f.name.includes('.'));
+  if (hasDotPaths) {
+    return JSON.stringify(reconstructNested(flat));
+  }
+  return JSON.stringify(flat);
 }
 
 function parseJsonBody(body: string): string {
@@ -104,6 +110,35 @@ export function parseWireBody(body: string, plan: ToolPlan): Record<string, unkn
     const rawVal = tok.slice(eq + 1);
     const field = plan.fields.find(f => f.name === key);
     out[key] = coerceValue(rawVal, field?.type);
+  }
+  return out;
+}
+
+/**
+ * Reconstruct a nested object from flat dot-path keys.
+ * E.g. {"profile.displayName": "Alice", "profile.bio": "Engineer"}
+ * → {"profile": {"displayName": "Alice", "bio": "Engineer"}}
+ */
+export function reconstructNested(flat: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(flat)) {
+    const parts = key.split('.');
+    if (parts.length === 1) {
+      out[key] = val;
+    } else {
+      let current = out;
+      for (let i = 0; i < parts.length; i++) {
+        const part = parts[i]!;
+        if (i === parts.length - 1) {
+          current[part] = val;
+        } else {
+          if (!(part in current) || typeof current[part] !== 'object' || current[part] === null) {
+            current[part] = {};
+          }
+          current = current[part] as Record<string, unknown>;
+        }
+      }
+    }
   }
   return out;
 }
@@ -153,9 +188,17 @@ export function tokenizeWire(input: string): string[] {
 
 /** Coerce a raw string value into the JS type implied by the schema field type label. */
 export function coerceValue(raw: string, type: string | undefined): unknown {
-  // Quoted strings.
+  // Quoted strings (double or single).
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return unquote(raw);
+  }
+  // Array literals: ["a","b"]
+  if (raw.startsWith('[') && raw.endsWith(']')) {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      // Fall through if JSON parse fails — treat as string
+    }
   }
   if (type === 'string') return raw;
   // Booleans and null

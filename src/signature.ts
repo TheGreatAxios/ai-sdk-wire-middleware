@@ -36,6 +36,72 @@ function isPrimitiveLeaf(node: SchemaNode): boolean {
   return false;
 }
 
+/**
+ * Check if a schema can be expressed in wire format.
+ * Extends `isFlatObject` to also accept:
+ * - Arrays of primitives / enums (e.g. `attendees: string[]`)
+ * - Nested objects up to `maxDepth` that only contain primitive leaves at all leaf paths
+ */
+export function isWireCapable(schema: SchemaNode | undefined, maxDepth = 2): boolean {
+  if (!schema || schema.type !== 'object' || !schema.properties) return false;
+  for (const prop of Object.values(schema.properties)) {
+    if (!isWireLeaf(prop, maxDepth)) return false;
+  }
+  return true;
+}
+
+function isWireLeaf(node: SchemaNode, depth: number): boolean {
+  if (!node) return false;
+  // Primitive types
+  if (typeof node.type === 'string' && PRIMITIVE_TYPES.has(node.type)) return true;
+  if (Array.isArray(node.type) && node.type.every(t => PRIMITIVE_TYPES.has(t) || t === 'null'))
+    return true;
+  // String/number/boolean enums
+  if (Array.isArray(node.enum) && node.enum.every(v => typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean'))
+    return true;
+  // Arrays of wire-leaves (primitive or nested-object items)
+  if (typeof node.type === 'string' && node.type === 'array' && node.items) {
+    return isWireLeaf(node.items, depth);
+  }
+  // Nested objects — recurse if we still have depth
+  if (typeof node.type === 'string' && node.type === 'object' && node.properties && depth > 0) {
+    for (const prop of Object.values(node.properties)) {
+      if (!isWireLeaf(prop as SchemaNode, depth - 1)) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Collect flattened field paths from a nested schema.
+ * Returns entries like:
+ *   { name: "profile.displayName", required: true, type: "string", leaf: true }
+ *   { name: "profile.address.street", required: true, type: "string", leaf: true }
+ */
+function collectFlattenedPaths(
+  schema: SchemaNode,
+  prefix: string,
+  topLevelRequired: Set<string>,
+): Array<{ name: string; required: boolean; type: string }> {
+  const out: Array<{ name: string; required: boolean; type: string }> = [];
+  if (!schema.properties) return out;
+  for (const [name, node] of Object.entries(schema.properties)) {
+    const key = prefix ? `${prefix}.${name}` : name;
+    const required = prefix
+      ? (schema.required ?? []).includes(name)
+      : topLevelRequired.has(name);
+
+    if (node.type === 'object' && node.properties) {
+      // Recurse into nested objects (this creates the flattened paths)
+      out.push(...collectFlattenedPaths(node, key, new Set(schema.required ?? [])));
+    } else {
+      out.push({ name: key, required, type: leafTypeLabel(node) });
+    }
+  }
+  return out;
+}
+
 /** Render a tool as a compact one-line signature. */
 export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json'): string {
   const schema = tool.inputSchema as SchemaNode;
@@ -47,6 +113,12 @@ export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json'): 
     return `${tool.name}: ()${desc}`;
   }
   const required = new Set(schema.required ?? []);
+  // For wire-capable nested schemas, use flattened paths
+  if (isWireCapable(schema)) {
+    const fields = collectFlattenedPaths(schema, '', required);
+    const parts = fields.map(f => `${f.name}${f.required ? '' : '?'}:${f.type}`);
+    return `${tool.name}: ${parts.join(', ')}${desc}`;
+  }
   const props = Object.entries(schema.properties).map(([name, node]) => {
     const opt = required.has(name) ? '' : '?';
     const t = leafTypeLabel(node as SchemaNode);
@@ -61,6 +133,13 @@ function leafTypeLabel(node: SchemaNode): string {
   }
   if (typeof node.type === 'string') {
     if (node.type === 'integer') return 'int';
+    if (node.type === 'array' && node.items) {
+      const inner = leafTypeLabel(node.items);
+      if (inner === 'string' || inner === 'int' || inner === 'number' || inner === 'boolean') {
+        return `${inner}[]`;
+      }
+      return `[${inner}]`;
+    }
     return node.type;
   }
   if (Array.isArray(node.type)) return node.type.join('|');
@@ -79,6 +158,7 @@ export function planTools(
   return tools.map(tool => {
     const schema = tool.inputSchema as SchemaNode;
     const flat = isFlatObject(schema);
+    const wireCapable = !flat && isWireCapable(schema);
     let encoding: 'wire' | 'json' = options.syntax;
     if (!flat) {
       if (options.fallbackToJson === 'error') {
@@ -88,16 +168,31 @@ export function planTools(
             `or fallbackToJson:"force" to attempt flattening anyway.`,
         );
       }
-      if (options.fallbackToJson === 'complex') encoding = 'json';
+      if (options.fallbackToJson === 'complex') {
+        // Use wire for flattenable nested schemas, JSON for truly complex ones
+        encoding = wireCapable ? 'wire' : 'json';
+      }
     }
+
     const required = new Set(schema?.required ?? []);
-    const fields = schema?.properties
-      ? Object.entries(schema.properties).map(([name, node]) => ({
-          name,
-          required: required.has(name),
-          type: leafTypeLabel(node as SchemaNode),
-        }))
-      : [];
+    let fields: Array<{ name: string; required: boolean; type: string }>;
+
+    if (flat || wireCapable) {
+      // For both flat and flattenable nested schemas, build the full field list
+      fields = schema?.properties
+        ? collectFlattenedPaths(schema, '', required)
+        : [];
+    } else {
+      // For JSON-encoded tools, just show top-level fields
+      fields = schema?.properties
+        ? Object.entries(schema.properties).map(([name, node]) => ({
+            name,
+            required: required.has(name),
+            type: leafTypeLabel(node as SchemaNode),
+          }))
+        : [];
+    }
+
     return {
       name: tool.name,
       description: tool.description,

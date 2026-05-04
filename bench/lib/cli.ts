@@ -2,15 +2,16 @@
  * Tiny argv parser. We don't need a CLI framework dependency.
  *
  * Supports:
- *   --models a,b,c           CSV list
- *   --cases x,y              CSV list
- *   --reps 3                 number
+ *   --models a,b,c              CSV list (legacy, used as fallback)
+ *   --provider-models p=a,b,c   Repeatable: models scoped to a provider
+ *   --cases x,y                 CSV list
+ *   --reps 3                    number
  *   --judge-model m
  *   --kind live|offline|agent
- *   --resume <file>          path to JSONL artifact to resume from
- *   --ablation key=value     repeatable
- *   --dry                    boolean
- *   --out <file>             override artifact path
+ *   --resume <file>             path to JSONL artifact to resume from
+ *   --ablation key=value        repeatable
+ *   --dry                       boolean
+ *   --out <file>                override artifact path
  *   --help / -h
  *
  * Booleans accept `--flag` or `--flag=true|false`. Unknown flags are kept
@@ -18,6 +19,8 @@
  */
 export interface ParsedArgs {
   models?: string[];
+  /** Provider-scoped model lists: e.g. { openrouter: [...], zai: [...] } */
+  providerModels: Record<string, string[]>;
   cases?: string[];
   reps?: number;
   judgeModel?: string;
@@ -31,7 +34,7 @@ export interface ParsedArgs {
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
-  const out: ParsedArgs = { ablations: {}, dry: false, help: false, unknown: {} };
+  const out: ParsedArgs = { ablations: {}, providerModels: {}, dry: false, help: false, unknown: {} };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] ?? '';
     if (a === '--help' || a === '-h') {
@@ -61,6 +64,18 @@ export function parseArgs(argv: string[]): ParsedArgs {
     switch (key) {
       case 'models':
         out.models = csv(val);
+        break;
+      case 'provider-models':
+        if (val) {
+          const eqIdx = val.indexOf('=');
+          if (eqIdx !== -1) {
+            const p = val.slice(0, eqIdx);
+            const m = val.slice(eqIdx + 1);
+            if (p) out.providerModels[p] = csv(m) ?? [];
+          } else {
+            out.unknown['provider-models'] = val;
+          }
+        }
         break;
       case 'cases':
         out.cases = csv(val);
@@ -106,13 +121,17 @@ function csv(v: string | undefined): string[] | undefined {
 
 export function helpText(): string {
   return `\nUsage: bun run bench/<script>.ts [options]\n\n` +
-    `  --models a,b,c        Override the model list (CSV)\n` +
-    `  --cases x,y           Run only these cases by name (CSV)\n` +
-    `  --reps 3              Repetitions per (model, case, mode) cell\n` +
-    `  --judge-model m       LLM judge model id (OpenRouter slug)\n` +
+    `  --models a,b,c                  Override the model list (CSV, legacy fallback)\n` +
+    `  --provider-models provider=a,b  Repeatable: models scoped to a provider\n` +
+    `                                    e.g. --provider-models openrouter=m1,m2\n` +
+    `                                         --provider-models zai=m3,m4\n` +
+    `                                    Env vars: OPENROUTER_MODELS, ZAI_MODELS\n` +
+    `  --cases x,y                     Run only these cases by name (CSV)\n` +
+    `  --reps 3                        Repetitions per (model, case, mode) cell\n` +
+    `  --judge-model m                 LLM judge model id (OpenRouter slug)\n` +
     `  --kind live|offline|agent\n` +
-    `  --resume <file>       Resume from existing JSONL artifact (skip present cells)\n` +
-    `  --ablation key=value  Tag rows with an ablation label (repeatable)\n` +
-    `  --out <file>          Override artifact output path\n` +
-    `  --dry                 Print plan and exit without making API calls\n`;
+    `  --resume <file>                 Resume from existing JSONL artifact (skip present cells)\n` +
+    `  --ablation key=value            Tag rows with an ablation label (repeatable)\n` +
+    `  --out <file>                    Override artifact output path\n` +
+    `  --dry                           Print plan and exit without making API calls\n`;
 }
