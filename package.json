@@ -1,6 +1,6 @@
 {
   "name": "ai-sdk-wire-middleware",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Compact-syntax tool-call middleware for the Vercel AI SDK v6 — drop tool-call output tokens by 5–10× with a <call>tool key=value</call> wire format.",
   "type": "module",
   "main": "./src/index.ts",
