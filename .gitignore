@@ -39,3 +39,4 @@ bench/results/*
 !bench/results/.gitkeep
 bench/cache/*
 !bench/cache/.gitkeep
+.pi/agent/sandbox.json

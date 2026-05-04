@@ -7,13 +7,18 @@
  * when `--resume <file>` is passed (skips cells already present).
  *
  * Usage:
- *   OPENROUTER_API_KEY=sk-or-... bun run bench:live
+ *   # Via OpenRouter (LLM judge + model-under-test):
  *   OPENROUTER_API_KEY=sk-or-... bun run bench/live.ts --models minimax/minimax-m2.5:free --cases getWeather,getTime --reps 1
  *   OPENROUTER_API_KEY=sk-or-... bun run bench/live.ts --resume bench/results/latest-live.jsonl
- *   OPENROUTER_API_KEY=sk-or-... bun run bench/live.ts --dry           # print plan only
+ *   OPENROUTER_API_KEY=sk-or-... bun run bench/live.ts --dry
+ *
+ *   # Via any OpenAI-compatible provider (Z.AI, Together, Groq, etc.) — no OpenRouter key needed:
+ *   ZAI_BASE_URL=https://api.z.ai/v1 ZAI_API_KEY=sk-... ZAI_MODEL=glm-4.5-air:free \
+ *     bun run bench/live.ts --reps 1 --cases 'getWeather (1 required)'
  */
 import { generateText, wrapLanguageModel } from 'ai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { createOpenAI } from '@ai-sdk/openai';
 import { compactTools } from '../src/index.ts';
 import { allAiSdkTools, cases, type ToolCase } from './tools.ts';
 import { parseArgs, helpText } from './lib/cli.ts';
@@ -47,21 +52,43 @@ async function main() {
     process.exit(0);
   }
 
-  const apiKey = process.env['OPENROUTER_API_KEY'];
-  if (!apiKey) {
-    console.error('✗ OPENROUTER_API_KEY is not set.');
-    console.error('  Get a free key at https://openrouter.ai/keys');
+  // ── Providers ──
+  // Two providers: OpenRouter (used for LLM judge) and an optional
+  // OpenAI-compatible endpoint (Z.AI, Together, Groq, etc.) for the
+  // model-under-test.  OpenRouter is only required when you want the
+  // LLM judge; with ZAI_BASE_URL + ZAI_MODEL set you can run without it.
+
+  const zaiBaseUrl = process.env['ZAI_BASE_URL'];
+  const zaiApiKey = process.env['ZAI_API_KEY'];
+  const zaiModel  = process.env['ZAI_MODEL'];
+  const zaiClient = zaiBaseUrl && zaiApiKey && zaiModel
+    ? createOpenAI({ baseURL: zaiBaseUrl.replace(/\/$/, '') + '/', apiKey: zaiApiKey })
+    : null;
+
+  const openrouterApiKey = process.env['OPENROUTER_API_KEY'];
+  const openrouter = openrouterApiKey ? createOpenRouter({ apiKey: openrouterApiKey }) : null;
+
+  const hasJudge = openrouter !== null || zaiClient !== null;
+  if (!zaiClient && !openrouter) {
+    console.error('✗ No provider configured. Set either:');
+    console.error('    OPENROUTER_API_KEY  — or —');
+    console.error('    ZAI_BASE_URL + ZAI_API_KEY + ZAI_MODEL');
     process.exit(1);
   }
 
-  const openrouter = createOpenRouter({ apiKey });
-  const judgeModel = args.judgeModel ?? DEFAULT_JUDGE_MODEL;
+  // Default judge model: OpenRouter model if available, otherwise ZAI_MODEL.
+  const judgeModel = args.judgeModel ?? (openrouter ? DEFAULT_JUDGE_MODEL : zaiModel ?? '');
   const reps = args.reps ?? 3;
   const kind: ArtifactRow['kind'] = 'live';
   const runId = newRunId(kind);
   const outPath = args.out ?? artifactPath(runId);
-  const models = resolveModels(args.models);
-  const judgeCache = loadJudgeCache();
+
+  // When ZAI is configured and `--models` wasn't passed, default to ZAI_MODEL.
+  // When `--models` is explicitly passed, trust the user (each cell routes to
+  // whichever provider matches — ZAI or OpenRouter).
+  const models = resolveModels(args.models, zaiClient ? zaiModel : undefined);
+
+  const judgeCache = hasJudge ? loadJudgeCache() : null;
 
   // --resume: load existing artifact and skip present cells.
   const skipKeys = args.resume ? loadRows(args.resume).filter(r => r.ok) : [];
@@ -156,24 +183,27 @@ async function main() {
     process.exit(0);
   }
 
-  // ── Judge caller (production: routes through OpenRouter) ──
-  const judgeCaller: JudgeCaller = async (input: JudgeInput, model: string) => {
-    const judgeModelObj = openrouter.chat(model, {
-      // Force a deterministic, minimal response from the judge.
-      maxTokens: 300,
-      temperature: 0,
-    });
-    const { system, user } = buildJudgePrompt(input);
-    const res = await generateText({
-      model: judgeModelObj,
-      system,
-      prompt: user,
-      temperature: 0,
-      maxOutputTokens: 300,
-    });
-    const { verdict, reason } = parseJudgeReply(res.text);
-    return { verdict, reason, latencyMs: res.usage?.outputTokens ?? 0 };
-  };
+  // ── Judge caller (routes through whichever provider is available) ──
+  let judgeCaller: JudgeCaller | null = null;
+  if (hasJudge) {
+    judgeCaller = async (input: JudgeInput, model: string) => {
+      // Use OpenRouter for the judge if available (it has cheap models like
+      // claude-haiku).  Otherwise fall back to the ZAI client (same model).
+      const judgeModelObj = openrouter
+        ? openrouter.chat(model)
+        : zaiClient!.chat(model);
+      const { system, user } = buildJudgePrompt(input);
+      const res = await generateText({
+        model: judgeModelObj,
+        system,
+        prompt: user,
+        temperature: 0,
+        maxOutputTokens: 300,
+      });
+      const { verdict, reason } = parseJudgeReply(res.text);
+      return { verdict, reason, latencyMs: res.usage?.outputTokens ?? 0 };
+    };
+  }
 
   // ── Ablation: apply settings to the middleware ──
   function buildMiddleware(ablation?: string, mode?: 'json' | 'compact') {
@@ -198,9 +228,18 @@ async function main() {
 
   for (const cell of pending) {
     const c = activeCases.find(c => c.name === cell.caseName)!;
-    const model = openrouter.chat(cell.model);
+    // Resolve the model provider — use ZAI client when the cell model matches ZAI_MODEL.
+    const useZai = zaiClient && zaiModel && cell.model === zaiModel;
+    if (!useZai && !openrouter) {
+      console.error(`✗ Model "${cell.model}" requires OpenRouter but no OPENROUTER_API_KEY is set.`);
+      console.error('  Either set OPENROUTER_API_KEY or use a model matching ZAI_MODEL.');
+      process.exit(1);
+    }
+    const rawModel = useZai
+      ? zaiClient!.chat(cell.model)
+      : openrouter!.chat(cell.model);
     const middleware = buildMiddleware(cell.ablation, cell.mode);
-    const actualModel = middleware ? wrapLanguageModel({ model, middleware }) : model;
+    const actualModel = middleware ? wrapLanguageModel({ model: rawModel, middleware }) : rawModel;
 
     const t0 = performance.now();
     const row: ArtifactRow = {
@@ -237,9 +276,9 @@ async function main() {
       row.outputTokens = res.usage?.outputTokens;
       row.elapsedMs = elapsed;
 
-      // LLM judge call (only when we got a tool call with matching tool name)
+      // LLM judge call (only when judge is available and tool name matches)
       let judgeResult: JudgeResult | null = null;
-      if (tc?.toolName && tc.toolName === c.nativeCall.name) {
+      if (judgeCaller && tc?.toolName && tc.toolName === c.nativeCall.name) {
         judgeResult = await judgeArgs(
           {
             toolName: c.nativeCall.name,
@@ -248,7 +287,7 @@ async function main() {
             gotArgs: tc.input,
           },
           judgeCaller,
-          { judgeModel, cache: judgeCache },
+          { judgeModel, cache: judgeCache! },
         );
         row.judge = {
           verdict: judgeResult.verdict,
@@ -261,7 +300,7 @@ async function main() {
           reason: 'no tool call emitted',
           model: judgeModel,
         };
-      } else {
+      } else if (tc.toolName !== c.nativeCall.name) {
         row.judge = {
           verdict: 'not-equivalent',
           reason: `wrong tool: expected ${c.nativeCall.name}, got ${tc.toolName}`,
@@ -269,11 +308,13 @@ async function main() {
         };
       }
 
-      const flag = row.judge.verdict === 'equivalent' ? '✓' : '≈';
+      const flag = !row.judge || row.judge.verdict === 'equivalent' ? '✓' : '≈';
+      const judgeTag = row.judge ? `judge=${row.judge.verdict}${judgeResult?.cached ? ' (cached)' : ''}` : 'no-judge';
+      const providerTag = useZai ? '[ZAI]' : '[OR]';
       console.log(
-        `${flag} [${cell.model.padEnd(30)}] [${cell.mode.padEnd(7)}] rep=${cell.rep} ${cell.caseName.padEnd(36)}  ` +
+        `${providerTag} ${flag} [${cell.model.padEnd(30)}] [${cell.mode.padEnd(7)}] rep=${cell.rep} ${cell.caseName.padEnd(36)}  ` +
         `${tc?.toolName ?? 'NO_CALL'}  out=${res.usage?.outputTokens ?? '?'}  ${elapsed}ms  ` +
-        `judge=${row.judge.verdict}${judgeResult?.cached ? ' (cached)' : ''}`,
+        `${judgeTag}`,
       );
     } catch (err) {
       const elapsed = Math.round(performance.now() - t0);
@@ -283,8 +324,9 @@ async function main() {
       row.elapsedMs = elapsed;
       errors.push(`${cell.model}/${cell.caseName}/${cell.mode}/${cell.rep}: ${message.slice(0, 100)}`);
 
+      const providerTag = useZai ? '[ZAI]' : '[OR]';
       console.log(
-        `✗ [${cell.model.padEnd(30)}] [${cell.mode.padEnd(7)}] rep=${cell.rep} ${cell.caseName.padEnd(36)}  ` +
+        `${providerTag} ✗ [${cell.model.padEnd(30)}] [${cell.mode.padEnd(7)}] rep=${cell.rep} ${cell.caseName.padEnd(36)}  ` +
         `ERROR: ${message.slice(0, 80)}`,
       );
     }

@@ -120,6 +120,75 @@ export const setReminder = tool({
   execute: async ({ message, atIso }) => `reminder set: ${message} @ ${atIso}`,
 });
 
+export const bookMeeting = tool({
+  description: 'Book a meeting room with optional projector and attendee list.',
+  inputSchema: zodSchema(
+    z.object({
+      title: z.string(),
+      date: z.string().describe('ISO 8601 date, e.g. 2026-05-15'),
+      duration: z.number().int().describe('Duration in minutes'),
+      attendees: z.array(z.string()).describe('List of attendee email addresses'),
+      room: z.string(),
+      requiresProjector: z.boolean().optional(),
+    }),
+  ),
+  execute: async ({ title, date, duration, room }) =>
+    `Booked "${title}" on ${date} for ${duration}min in ${room}`,
+});
+
+export const updateUserProfile = tool({
+  description: 'Update a user\'s profile including nested address and preferences.',
+  inputSchema: zodSchema(
+    z.object({
+      userId: z.string(),
+      profile: z.object({
+        displayName: z.string(),
+        bio: z.string().optional(),
+        address: z.object({
+          street: z.string(),
+          city: z.string(),
+          country: z.string(),
+        }),
+        preferences: z.object({
+          theme: z.enum(['light', 'dark', 'system']).optional(),
+          notifications: z.boolean().optional(),
+        }).optional(),
+      }),
+    }),
+  ),
+  execute: async ({ userId }) => `Profile updated for ${userId}`,
+});
+
+export const toggleFeature = tool({
+  description: 'Enable or disable a feature flag.',
+  inputSchema: zodSchema(
+    z.object({
+      name: z.string().describe('Feature flag name'),
+      enable: z.boolean(),
+    }),
+  ),
+  execute: async ({ name, enable }) =>
+    `Feature "${name}" ${enable ? 'enabled' : 'disabled'}`,
+});
+
+export const analyzeSentiment = tool({
+  description: 'Analyze the sentiment of a piece of text. Returns positive, negative, or neutral.',
+  inputSchema: zodSchema(
+    z.object({
+      text: z.string(),
+      language: z.string().optional().describe('ISO 639-1 language code, e.g. en, es, fr'),
+    }),
+  ),
+  execute: async ({ text }) => {
+    const positive = ['good', 'great', 'love', 'amazing', 'excellent'];
+    const negative = ['bad', 'terrible', 'hate', 'awful', 'poor'];
+    const lower = text.toLowerCase();
+    if (positive.some(w => lower.includes(w))) return 'positive';
+    if (negative.some(w => lower.includes(w))) return 'negative';
+    return 'neutral';
+  },
+});
+
 export const askDb = tool({
   description: 'Run a read-only SQL query against the analytics database.',
   inputSchema: zodSchema(
@@ -131,17 +200,7 @@ export const askDb = tool({
   execute: async ({ sql, limit }) => `[${limit ?? 10} rows for: ${sql.slice(0, 40)}…]`,
 });
 
-export const allAiSdkTools = {
-  getWeather,
-  getTime,
-  sendEmail,
-  searchProducts,
-  webFetch,
-  calculate,
-  listFiles,
-  setReminder,
-  askDb,
-};
+
 
 // ─────────────────────────────────────────── provider-shape (for bench) ──
 
@@ -261,6 +320,85 @@ export const providerTools = [
       required: ['sql'],
     },
   },
+  {
+    type: 'function' as const,
+    name: 'bookMeeting',
+    description: 'Book a meeting room with optional projector and attendee list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        date: { type: 'string' },
+        duration: { type: 'integer' },
+        attendees: { type: 'array', items: { type: 'string' } },
+        room: { type: 'string' },
+        requiresProjector: { type: 'boolean' },
+      },
+      required: ['title', 'date', 'duration', 'attendees', 'room'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'updateUserProfile',
+    description: "Update a user's profile including nested address and preferences.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        userId: { type: 'string' },
+        profile: {
+          type: 'object',
+          properties: {
+            displayName: { type: 'string' },
+            bio: { type: 'string' },
+            address: {
+              type: 'object',
+              properties: {
+                street: { type: 'string' },
+                city: { type: 'string' },
+                country: { type: 'string' },
+              },
+              required: ['street', 'city', 'country'],
+            },
+            preferences: {
+              type: 'object',
+              properties: {
+                theme: { type: 'string', enum: ['light', 'dark', 'system'] },
+                notifications: { type: 'boolean' },
+              },
+            },
+          },
+          required: ['displayName', 'address'],
+        },
+      },
+      required: ['userId', 'profile'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'toggleFeature',
+    description: 'Enable or disable a feature flag.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        enable: { type: 'boolean' },
+      },
+      required: ['name', 'enable'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'analyzeSentiment',
+    description: 'Analyze the sentiment of a piece of text.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string' },
+        language: { type: 'string' },
+      },
+      required: ['text'],
+    },
+  },
 ];
 
 // ─────────────────────────────────────────── representative invocations ──
@@ -358,4 +496,156 @@ export const cases: ToolCase[] = [
     compactCall:
       '<call>askDb sql="SELECT * FROM users WHERE active = true" limit=100</call>',
   },
+  {
+    name: 'bookMeeting (6 args)',
+    prompt:
+      'Book a meeting titled \"Sprint Review\" on 2026-05-15 for 60 minutes ' +
+      'with alice@co.com, bob@co.com in room A requiring a projector.',
+    nativeCall: {
+      name: 'bookMeeting',
+      arguments: {
+        title: 'Sprint Review',
+        date: '2026-05-15',
+        duration: 60,
+        attendees: ['alice@co.com', 'bob@co.com'],
+        room: 'A',
+        requiresProjector: true,
+      },
+    },
+    compactCall:
+      '<call>bookMeeting ' +
+      '{"title":"Sprint Review","date":"2026-05-15","duration":60,' +
+      '"attendees":["alice@co.com","bob@co.com"],' +
+      '"room":"A","requiresProjector":true}</call>',
+  },
+  {
+    name: 'bookMeeting (required only)',
+    prompt:
+      'Book a meeting called \"Quick Sync\" on 2026-06-01 for 30 minutes ' +
+      'with just me in Room B (no projector needed).',
+    nativeCall: {
+      name: 'bookMeeting',
+      arguments: {
+        title: 'Quick Sync',
+        date: '2026-06-01',
+        duration: 30,
+        attendees: ['me@co.com'],
+        room: 'B',
+      },
+    },
+    compactCall:
+      '<call>bookMeeting ' +
+      '{"title":"Quick Sync","date":"2026-06-01","duration":30,' +
+      '"attendees":["me@co.com"],"room":"B"}</call>',
+  },
+  {
+    name: 'updateUserProfile (nested)',
+    prompt:
+      'Update user abc123: set display name to \"Alice\", bio \"Engineer\", ' +
+      'address 123 Main St, Austin, US, dark theme, notifications off.',
+    nativeCall: {
+      name: 'updateUserProfile',
+      arguments: {
+        userId: 'abc123',
+        profile: {
+          displayName: 'Alice',
+          bio: 'Engineer',
+          address: { street: '123 Main St', city: 'Austin', country: 'US' },
+          preferences: { theme: 'dark', notifications: false },
+        },
+      },
+    },
+    compactCall:
+      '<call>updateUserProfile ' +
+      '{"userId":"abc123",' +
+      '"profile":{"displayName":"Alice","bio":"Engineer",' +
+      '"address":{"street":"123 Main St","city":"Austin","country":"US"},' +
+      '"preferences":{"theme":"dark","notifications":false}}}</call>',
+  },
+  {
+    name: 'getWeather (unicode)',
+    prompt: 'What is the weather in México City?',
+    nativeCall: { name: 'getWeather', arguments: { location: 'México City' } },
+    compactCall: '<call>getWeather location="México City"</call>',
+  },
+  {
+    name: 'sendEmail (internal quotes)',
+    prompt:
+      'Send email to ceo@co.com with subject \"Quote of the day\" ' +
+      'and body The CEO said \"great job everyone\" at the all-hands.',
+    nativeCall: {
+      name: 'sendEmail',
+      arguments: {
+        to: 'ceo@co.com',
+        subject: 'Quote of the day',
+        body: 'The CEO said "great job everyone" at the all-hands',
+      },
+    },
+    compactCall:
+      '<call>sendEmail to="ceo@co.com" subject="Quote of the day" ' +
+      'body="The CEO said \\"great job everyone\\" at the all-hands"</call>',
+  },
+  {
+    name: 'askDb (long SQL)',
+    prompt:
+      'Run this query: ' +
+      'SELECT u.name, u.email, o.total, o.status FROM users u ' +
+      'JOIN orders o ON u.id = o.user_id WHERE o.status = \"pending\" ' +
+      'AND o.total > 100 ORDER BY o.created_at DESC LIMIT 50',
+    nativeCall: {
+      name: 'askDb',
+      arguments: {
+        sql:
+          'SELECT u.name, u.email, o.total, o.status FROM users u ' +
+          'JOIN orders o ON u.id = o.user_id WHERE o.status = "pending" ' +
+          'AND o.total > 100 ORDER BY o.created_at DESC',
+        limit: 50,
+      },
+    },
+    compactCall:
+      '<call>askDb sql="SELECT u.name, u.email, o.total, o.status FROM users u ' +
+      'JOIN orders o ON u.id = o.user_id WHERE o.status = \\"pending\\" ' +
+      'AND o.total > 100 ORDER BY o.created_at DESC" limit=50</call>',
+  },
+  {
+    name: 'toggleFeature (boolean only)',
+    prompt: 'Turn on the new-dashboard feature flag.',
+    nativeCall: {
+      name: 'toggleFeature',
+      arguments: { name: 'new-dashboard', enable: true },
+    },
+    compactCall: '<call>toggleFeature name="new-dashboard" enable=true</call>',
+  },
+  {
+    name: 'analyzeSentiment (with optional)',
+    prompt: 'Analyze the sentiment of \"I love this product!\" in English.',
+    nativeCall: {
+      name: 'analyzeSentiment',
+      arguments: { text: 'I love this product!', language: 'en' },
+    },
+    compactCall:
+      '<call>analyzeSentiment text="I love this product!" language=en</call>',
+  },
+  {
+    name: 'listFiles (no recursive)',
+    prompt: 'List files in the current directory (not recursive).',
+    nativeCall: { name: 'listFiles', arguments: { directory: '.' } },
+    compactCall: '<call>listFiles directory="."</call>',
+  },
 ];
+
+export const allAiSdkTools = {
+  getWeather,
+  getTime,
+  sendEmail,
+  searchProducts,
+  webFetch,
+  calculate,
+  listFiles,
+  setReminder,
+  askDb,
+  bookMeeting,
+  updateUserProfile,
+  toggleFeature,
+  analyzeSentiment,
+};

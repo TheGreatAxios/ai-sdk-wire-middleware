@@ -12,10 +12,15 @@
  *   OPENROUTER_API_KEY=sk-or-... bun run bench/agent.ts --models minimax/minimax-m2.5:free
  *   OPENROUTER_API_KEY=sk-or-... bun run bench/agent.ts --reps 1
  *   OPENROUTER_API_KEY=sk-or-... bun run bench/agent.ts --resume bench/results/latest-agent.jsonl
+ *
+ *   # Or use any OpenAI-compatible provider (no OpenRouter key needed):
+ *   ZAI_BASE_URL=https://api.z.ai/v1 ZAI_API_KEY=sk-... ZAI_MODEL=glm-4.5-air:free \
+ *     bun run bench/agent.ts --reps 1 --cases tx-cities-weather-email
  */
 import { generateText, wrapLanguageModel, tool, zodSchema } from 'ai';
 import { z } from 'zod';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
+import { createOpenAI } from '@ai-sdk/openai';
 import { compactTools } from '../src/index.ts';
 import { parseArgs, helpText } from './lib/cli.ts';
 import {
@@ -156,18 +161,29 @@ async function main() {
     process.exit(0);
   }
 
-  const apiKey = process.env['OPENROUTER_API_KEY'];
-  if (!apiKey) {
-    console.error('✗ OPENROUTER_API_KEY is not set.');
+  // ── Providers ──
+  const zaiBaseUrl = process.env['ZAI_BASE_URL'];
+  const zaiApiKey = process.env['ZAI_API_KEY'];
+  const zaiModel  = process.env['ZAI_MODEL'];
+  const zaiClient = zaiBaseUrl && zaiApiKey && zaiModel
+    ? createOpenAI({ baseURL: zaiBaseUrl.replace(/\/$/, '') + '/', apiKey: zaiApiKey })
+    : null;
+
+  const openrouterApiKey = process.env['OPENROUTER_API_KEY'];
+  const openrouter = openrouterApiKey ? createOpenRouter({ apiKey: openrouterApiKey }) : null;
+
+  if (!zaiClient && !openrouter) {
+    console.error('✗ No provider configured. Set either:');
+    console.error('    OPENROUTER_API_KEY  — or —');
+    console.error('    ZAI_BASE_URL + ZAI_API_KEY + ZAI_MODEL');
     process.exit(1);
   }
 
-  const openrouter = createOpenRouter({ apiKey });
   const reps = args.reps ?? 3;
   const kind: ArtifactRow['kind'] = 'agent';
   const runId = newRunId(kind);
   const outPath = args.out ?? artifactPath(runId);
-  const models = resolveModels(args.models);
+  const models = resolveModels(args.models, zaiClient ? zaiModel : undefined);
 
   // Filter tasks by --cases CSV if provided.
   let activeTasks: AgentTask[] = agentTasks;
@@ -240,11 +256,20 @@ async function main() {
 
   for (const cell of pending) {
     const task = activeTasks.find(t => t.name === cell.taskName)!;
-    const baseModel = openrouter.chat(cell.model);
+    // Resolve the model provider — use ZAI client when the cell model matches ZAI_MODEL.
+    const useZai = zaiClient && zaiModel && cell.model === zaiModel;
+    if (!useZai && !openrouter) {
+      console.error(`✗ Model "${cell.model}" requires OpenRouter but no OPENROUTER_API_KEY is set.`);
+      console.error('  Either set OPENROUTER_API_KEY or use a model matching ZAI_MODEL.');
+      process.exit(1);
+    }
+    const rawModel = useZai
+      ? zaiClient!.chat(cell.model)
+      : openrouter!.chat(cell.model);
     const selectedTools = buildStubTools(task);
     const model = cell.mode === 'compact'
-      ? wrapLanguageModel({ model: baseModel, middleware: compactTools() })
-      : baseModel;
+      ? wrapLanguageModel({ model: rawModel, middleware: compactTools() })
+      : rawModel;
 
     const steps: AgentStep[] = [];
     const recorder = makeStepRecorder(steps);

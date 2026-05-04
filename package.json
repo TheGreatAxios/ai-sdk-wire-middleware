@@ -33,6 +33,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
+    "@ai-sdk/openai": "3.0.58",
     "js-tiktoken": "^1.0.21"
   }
 }

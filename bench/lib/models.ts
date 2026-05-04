@@ -39,7 +39,12 @@ export function modelLabel(slug: string): string {
   return slug;
 }
 
-export function resolveModels(cliModels?: string[]): ModelEntry[] {
-  const slugs = (cliModels && cliModels.length > 0) ? cliModels : DEFAULT_MODELS;
-  return slugs.map(slug => ({ slug, label: modelLabel(slug) }));
+export function resolveModels(cliModels?: string[], defaultModel?: string): ModelEntry[] {
+  if (cliModels && cliModels.length > 0) {
+    return cliModels.map(slug => ({ slug, label: modelLabel(slug) }));
+  }
+  if (defaultModel) {
+    return [{ slug: defaultModel, label: modelLabel(defaultModel) }];
+  }
+  return DEFAULT_MODELS.map(slug => ({ slug, label: modelLabel(slug) }));
 }
