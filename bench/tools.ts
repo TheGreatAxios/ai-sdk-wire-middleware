@@ -407,7 +407,7 @@ export interface ToolCase {
   name: string;
   /** Native JSON tool call as the model would emit it via OpenAI/Anthropic. */
   nativeCall: { name: string; arguments: Record<string, unknown> };
-  /** Compact representation we expect from `tool-reduce`. */
+  /** Compact representation we expect from the middleware. */
   compactCall: string;
   /** A natural-language prompt that should elicit this exact call. */
   prompt: string;

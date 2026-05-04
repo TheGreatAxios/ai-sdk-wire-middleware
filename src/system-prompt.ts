@@ -1,18 +1,19 @@
 import type { CompactToolsOptions, ToolPlan } from './types.ts';
 
-const DEFAULT_HEADER = `# Tool calling protocol
+const DEFAULT_HEADER = `# Wire format
 
-When you want to call a tool, emit EXACTLY one call per tool invocation, on its own line, in this form:
+Instead of JSON function calls, use:
+  <call>getWeather location="Austin" units=metric</call>
+  <call>createUser userId="abc" profile[name="Alice" role="admin"]</call>
 
-<call>tool_name arg=value other=42</call>
+Values:
+  - Strings: text="hello world"
+  - Unquoted: numbers, booleans, null
+  - Nesting: parent[child=val]
+  - Arrays: tags=["a","b"]
+  - Tools marked <json> use: {"key":"val"}
 
-Rules:
-- Quote any value containing spaces, commas, or special chars: name="New York"
-- Numbers and booleans are unquoted: count=3 enabled=true
-- For tools marked <json> below, put a single JSON object as the body: <call>tool_name {"x": 1}</call>
-- Do NOT wrap the call in code fences. Do NOT emit JSON tool_calls; only the <call>…</call> form is recognized.
-- After emitting a call, stop generating until you receive the tool result.
-- Free-form prose before/after a call is fine; the parser only acts on <call>…</call> tags.`;
+No native JSON tool_calls. Only <call>…</call> tags are parsed.`;
 
 export function buildSystemPrompt(plans: ToolPlan[], options: CompactToolsOptions): string {
   const header = options.manualHeader ?? DEFAULT_HEADER;

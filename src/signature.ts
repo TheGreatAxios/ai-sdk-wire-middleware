@@ -83,7 +83,7 @@ export function planTools(
     if (!flat) {
       if (options.fallbackToJson === 'error') {
         throw new Error(
-          `tool-reduce: tool "${tool.name}" has a non-flat input schema; ` +
+          `ai-sdk-wire-middleware: tool "${tool.name}" has a non-flat input schema; ` +
             `set fallbackToJson:"complex" (default) to allow JSON encoding for it, ` +
             `or fallbackToJson:"force" to attempt flattening anyway.`,
         );

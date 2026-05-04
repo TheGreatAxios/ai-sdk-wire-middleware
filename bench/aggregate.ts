@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * tool-reduce — benchmark aggregator
+ * ai-sdk-wire-middleware — benchmark aggregator
  * --------------------------------------------------------------
  * Reads a JSONL artifact produced by `bench/live.ts` or `bench/agent.ts`
  * and emits summary tables in markdown, ready to paste into REPORT.md.
@@ -265,7 +265,7 @@ const liveRows = allRows.filter(r => r.kind === 'live');
 const agentRows = allRows.filter(r => r.kind === 'agent');
 
 console.log('---');
-console.log('# tool-reduce benchmark report');
+console.log('# ai-sdk-wire-middleware benchmark report');
 console.log('');
 console.log(`_Generated from ${allRows.length} rows across ${new Set(allRows.map(r => r.kind)).size} benchmark kinds._`);
 console.log('');

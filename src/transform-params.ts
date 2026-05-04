@@ -44,7 +44,7 @@ export async function transformParams(
   });
 
   if (options.debug) {
-    process.stderr.write(`[tool-reduce] injecting manual for ${plans.length} tool(s)\n`);
+    process.stderr.write(`[ai-sdk-wire-middleware] injecting manual for ${plans.length} tool(s)\n`);
   }
 
   const rewrittenPrompt = rewriteHistory(params.prompt, plans);

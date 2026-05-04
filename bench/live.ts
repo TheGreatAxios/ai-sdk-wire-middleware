@@ -1,5 +1,5 @@
 /**
- * tool-reduce — live benchmark (multi-model, multi-rep, judge-integrated)
+ * ai-sdk-wire-middleware — live benchmark (multi-model, multi-rep, judge-integrated)
  * --------------------------------------------------------------
  * Compares JSON tool-calling vs. compact `<call>` protocol on real LLMs.
  * Every cell — (model, case, mode, rep) — is persisted as one JSONL line in
@@ -163,7 +163,7 @@ async function main() {
   const skipKeySet = new Set(skipKeys.map(r => `live|${r.model}|${r.case}|${r.mode}|${r.rep}|${r.ablation ?? '_'}`));
   const pending = cells.filter(c => !skipKeySet.has(c.key));
 
-  console.log('=== tool-reduce live benchmark ===');
+  console.log('=== ai-sdk-wire-middleware live benchmark ===');
   console.log(`runId:       ${runId}`);
   console.log(`artifact:    ${outPath}`);
   console.log(`judge model: ${judgeModel}`);

@@ -1,5 +1,5 @@
 /**
- * tool-reduce — offline benchmark
+ * ai-sdk-wire-middleware — offline benchmark
  * --------------------------------------------------------------
  * Measures (a) token cost of the compact format vs. baselines (JSON,
  * Anthropic-style XML, Python-style DSL) and (b) round-trip correctness on a
@@ -122,7 +122,7 @@ function bench(runId: string): OfflineArtifact {
     pythonDslVsJson: round((totals.json - totals.pythonDsl) / totals.json),
   };
 
-  console.log('=== tool-reduce offline benchmark ===\n');
+  console.log('=== ai-sdk-wire-middleware offline benchmark ===\n');
   console.log(`tokenizer: ${TOKENIZER_NAME}`);
   console.log(`tool catalogue: ${providerTools.length} tools, ${cases.length} test cases\n`);
 

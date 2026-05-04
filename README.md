@@ -1,11 +1,11 @@
-# tool-reduce
+# ai-sdk-wire-middleware
 
 > Compact-syntax tool calling for the [Vercel AI SDK v6](https://ai-sdk.dev). Drops tool-call **output tokens by ~40–60%** on agent loops by replacing JSON `tool_use` blocks with a one-line `<call>name k=v</call>` wire format — while keeping `streamText`/`generateText`/multi-step tool execution working unchanged.
 
 ```ts
 import { wrapLanguageModel, generateText, tool } from 'ai';
 import { anthropic } from '@ai-sdk/anthropic';
-import { compactTools } from 'tool-reduce';
+import { compactTools } from 'ai-sdk-wire-middleware';
 import { z } from 'zod';
 
 const model = wrapLanguageModel({
@@ -65,9 +65,9 @@ The system-prompt manual (~260 tokens) is a one-time cost that the provider's pr
 ## Install
 
 ```sh
-bun add tool-reduce
+bun add ai-sdk-wire-middleware
 # or
-npm i tool-reduce
+npm i ai-sdk-wire-middleware
 ```
 
 Peer deps: `ai@^6`, `@ai-sdk/provider@^3`, `zod@^3 || ^4`.

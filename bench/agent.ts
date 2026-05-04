@@ -1,5 +1,5 @@
 /**
- * tool-reduce — multi-step agent benchmark
+ * ai-sdk-wire-middleware — multi-step agent benchmark
  * --------------------------------------------------------------
  * Runs a set of multi-step agent tasks across models, comparing native JSON
  * tool-calling vs. compact `<call>` protocol. Each task defines a prompt,
@@ -233,7 +233,7 @@ async function main() {
   }
   const pending = cells.filter(c => !skipSet.has(c.key));
 
-  console.log('=== tool-reduce agent benchmark ===');
+  console.log('=== ai-sdk-wire-middleware agent benchmark ===');
   console.log(`runId:       ${runId}`);
   console.log(`artifact:    ${outPath}`);
   if (args.resume) console.log(`resume:      ${args.resume}  (${skipSet.size} existing, ${pending.length} pending)`);

@@ -15,7 +15,7 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
  *
  * ```ts
  * import { wrapLanguageModel } from 'ai';
- * import { compactTools } from 'tool-reduce';
+ * import { compactTools } from 'ai-sdk-wire-middleware';
  *
  * const model = wrapLanguageModel({
  *   model: anthropic('claude-sonnet-4-5'),
