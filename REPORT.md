@@ -274,9 +274,15 @@ block), but the key-value syntax accounts for the majority of the savings.
 - **Lossy schema encoding.** Deeply nested objects and complex unions
   still fall back to JSON inside `<call>`. One-level arrays and shallow
   nesting are supported via inline syntax and dot paths.
-- **Model dependency.** The 5× accuracy win is measured on
-  GLM-5-class models (744B MoE). Claude, GPT-5, and other strong models
-  may show a smaller gap since they're already fluent in JSON tool calling.
+- **Model-dependent, not purely size-dependent.** The compact format is
+  a system-prompt-only protocol — it strips the native `tools` field and
+  relies on the model learning the format from text. `Granite4.1:3b`
+  scores 10/19 compact vs 14/19 JSON (35.6% token savings) on single
+  calls, while the larger `Llama 3.1:8b` scores 0/19 compact. But on
+  multi-step agent tasks both modes perform equally poorly (0/6 each) —
+  the model can't chain calls regardless of format. The 5× agent
+  accuracy win is measured on GLM-5-class models (744B MoE). Benchmark
+  your specific model.
 - **First-call quality dip.** Models heavily trained on JSON tool protocol
   may dip in quality on the very first compact-format call before the
   format is in context.
@@ -284,7 +290,8 @@ block), but the key-value syntax accounts for the majority of the savings.
 ### 6.3 Forward plan
 
 1. **More models.** Extend the agent benchmark to Qwen, DeepSeek, Llama,
-   and other open models to measure where the accuracy gap is largest.
+   Granite, and other open models to map which architectures handle the
+   text-only protocol and which don't.
 2. **Harder tasks.** Replace synthetic tasks with Tau-bench-style
    multi-tool evaluations where cumulative output-token cost and task
    completion rate are both measured.
@@ -294,6 +301,10 @@ block), but the key-value syntax accounts for the majority of the savings.
 4. **Input-side optimization.** Measure the one-time input savings from
    the smaller compact manual on providers with prompt caching (Anthropic,
    OpenAI), where the cache-miss cost is a one-time penalty.
+5. **Investigate tool-use training.** Granite4.1:3b handles single-call
+   compact format (10/19) better than Llama 3.1:8b (0/19), but fails on
+   agent tasks (0/6). Understanding what makes a model follow text-only
+   protocols vs. native API enforcement may guide training improvements.
 
 ---
 
