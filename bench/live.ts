@@ -138,11 +138,14 @@ async function main() {
     const syntax = ab['syntax']!;
     if (syntax === 'json') {
       modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
+    } else if (syntax === 'kwargs') {
+      modes.push({ mode: 'compact', label: 'compact (kwargs)', ablation: 'syntax=kwargs' });
     } else if (syntax === 'all') {
-      // Run both syntaxes for direct comparison
+      // Run all syntaxes for direct comparison
       modes.push({ mode: 'json', label: 'json', ablation: undefined });
       modes.push({ mode: 'compact', label: 'compact (wire)', ablation: 'syntax=wire' });
       modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
+      modes.push({ mode: 'compact', label: 'compact (kwargs)', ablation: 'syntax=kwargs' });
     } else {
       // wire is the default compact
       modes.push({ mode: 'compact', label: 'compact', ablation: undefined });
@@ -251,6 +254,9 @@ async function main() {
     }
     if (ablation === 'syntax=json') {
       return compactTools({ syntax: 'json' });
+    }
+    if (ablation === 'syntax=kwargs') {
+      return compactTools({ syntax: 'kwargs' });
     }
     if (ablation === 'syntax=wire') {
       return compactTools({ syntax: 'wire' });

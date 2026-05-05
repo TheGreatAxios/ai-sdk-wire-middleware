@@ -14,6 +14,24 @@ numbers/booleans unquoted, arrays as ["a","b"], nested as parent.child=val.
 
 Only <call>…</call> is parsed — no native JSON tool calls.`;
 
+const KWARGS_HEADER = `# Tool calling: Python-style keyword args
+
+Call tools by filling in the template values:
+<call>toolName(param="value", flag=false, count=0)</call>
+
+Examples:
+<call>getWeather(location="Austin", units="metric")</call>
+<call>bookMeeting(title="Review", date="2026-05-15", duration=60)</call>
+
+Rules:
+- Strings in quotes: name="Alice Smith"
+- Numbers & booleans bare: count=42, flag=true
+- Arrays as JSON: tags=["a", "b"]
+- Nested objects with braces: profile={displayName="Alice", age=30}
+- Omit optional params you don't need
+
+IMPORTANT: Use the exact parameter names shown in the template. Do NOT output JSON tool calls.`;
+
 export function buildSystemPrompt(plans: ToolPlan[], options: CompactToolsOptions): string {
   const header = options.manualHeader ?? getDefaultHeader(options.syntax ?? 'wire');
   if (plans.length === 0) return header;
@@ -21,7 +39,8 @@ export function buildSystemPrompt(plans: ToolPlan[], options: CompactToolsOption
   return `${header}\n\n## Available tools\n\n${lines}`;
 }
 
-function getDefaultHeader(syntax: 'wire' | 'json'): string {
+function getDefaultHeader(syntax: 'wire' | 'json' | 'kwargs'): string {
+  if (syntax === 'kwargs') return KWARGS_HEADER;
   return DEFAULT_HEADER;
 }
 

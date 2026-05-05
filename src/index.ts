@@ -11,9 +11,10 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
 /**
  * `compactTools()` — replace JSON tool calls with a compact `<call>name k=v</call>` syntax.
  *
- * Supports two encoding styles:
+ * Supports three encoding styles:
  * - `wire` (default): `<call>getWeather location=Austin units=metric</call>`
  * - `json`: `<call>getWeather {"location":"Austin","units":"metric"}</call>`
+ * - `kwargs`: `<call>getWeather(location=Austin, units=metric)</call>`
  *
  * Plug into AI SDK v6 via `wrapLanguageModel`:
  *

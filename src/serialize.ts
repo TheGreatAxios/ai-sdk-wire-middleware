@@ -30,6 +30,9 @@ export function serializeCall(toolName: string, input: string, plan: ToolPlan | 
   if (!plan || plan.encoding === 'json' || !args || typeof args !== 'object') {
     return `${CALL_OPEN}${toolName} ${input || '{}'}${CALL_CLOSE}`;
   }
+  if (plan.encoding === 'kwargs') {
+    return serializeKwargsCall(toolName, args as Record<string, unknown>, plan);
+  }
   // wire: flatten nested objects into dot-path keys
   const entries = flattenNested(args as Record<string, unknown>);
   const parts: string[] = [];
@@ -38,6 +41,45 @@ export function serializeCall(toolName: string, input: string, plan: ToolPlan | 
     parts.push(`${k}=${formatValue(v, fieldType)}`);
   }
   return `${CALL_OPEN}${toolName}${parts.length ? ' ' + parts.join(' ') : ''}${CALL_CLOSE}`;
+}
+
+/** Serialize a call in kwargs-style format: toolName(key=value, key=value) */
+function serializeKwargsCall(toolName: string, args: Record<string, unknown>, plan: ToolPlan): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(args)) {
+    parts.push(`${k}=${formatKwargsValue(v)}`);
+  }
+  const body = parts.length ? parts.join(', ') : '';
+  return `${CALL_OPEN}${toolName}(${body})${CALL_CLOSE}`;
+}
+
+/** Format a value for kwargs output. Nested objects rendered inline with {}. */
+function formatKwargsValue(v: unknown): string {
+  if (v == null) return 'null';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'string') {
+    // Quote if empty, contains special chars, or looks like a keyword/number
+    if (v.length === 0) return '""';
+    const needsQuote = /[\s"'=,(){}]/.test(v) ||
+      v === 'true' || v === 'false' || v === 'null' || /^-?\d+(\.\d+)?$/.test(v);
+    if (needsQuote) {
+      if (v.includes('"') && !v.includes("'")) return `'${v}'`;
+      return JSON.stringify(v);
+    }
+    return v;
+  }
+  if (Array.isArray(v)) {
+    const items = v.map(formatKwargsValue);
+    return `[${items.join(', ')}]`;
+  }
+  if (typeof v === 'object') {
+    // Inline object: {key=val, key=val}
+    const entries = Object.entries(v as Record<string, unknown>);
+    const inner = entries.map(([k, val]) => `${k}=${formatKwargsValue(val)}`);
+    return `{${inner.join(', ')}}`;
+  }
+  return String(v);
 }
 
 function safeParse(input: string): unknown {

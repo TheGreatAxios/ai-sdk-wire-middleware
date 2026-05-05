@@ -54,7 +54,8 @@ export function splitNameAndBody(body: string): { toolName: string; argsBody: st
   let i = 0;
   while (i < body.length && /\s/.test(body[i]!)) i++;
   const nameStart = i;
-  while (i < body.length && !/\s/.test(body[i]!)) i++;
+  // Read tool name: stop at whitespace OR open paren
+  while (i < body.length && !/\s/.test(body[i]!) && body[i] !== '(') i++;
   const toolName = body.slice(nameStart, i);
   const argsBody = body.slice(i).trim();
   return { toolName, argsBody };
@@ -64,6 +65,10 @@ export function splitNameAndBody(body: string): { toolName: string; argsBody: st
 export function encodeArgs(argsBody: string, plan: ToolPlan): string {
   if (plan.encoding === 'json') {
     return parseJsonBody(argsBody);
+  }
+  if (plan.encoding === 'kwargs') {
+    // kwargs uses inline {key=val} objects for nesting, not dot paths
+    return JSON.stringify(parseKwargsBody(argsBody, plan));
   }
   const flat = parseWireBody(argsBody, plan);
   // Check if any plan fields use dot paths (nested flattening).
@@ -91,6 +96,104 @@ function parseJsonBody(body: string): string {
       `Invalid JSON in tool call body: ${(err as Error).message}`,
     );
   }
+}
+
+/**
+ * Parse kwargs-style arguments: `key1=val1, key2=val2`
+ * inside parentheses. Handles quoted strings, arrays, inline objects (`{key=val}`),
+ * and dot-paths for nested fields.
+ *
+ * @param body - The raw args body (may include surrounding parens)
+ * @param plan - ToolPlan for field type info (can be null for recursive inline parsing)
+ */
+export function parseKwargsBody(body: string, plan: ToolPlan | null): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const trimmed = body.trim();
+  if (!trimmed) return out;
+
+  // Strip surrounding parentheses if present
+  let inner = trimmed;
+  if (inner.startsWith('(') && inner.endsWith(')')) {
+    inner = inner.slice(1, -1).trim();
+  }
+  if (!inner) return out;
+
+  const tokens = tokenizeKwargs(inner);
+  for (const tok of tokens) {
+    const eq = tok.indexOf('=');
+    if (eq === -1) {
+      throw new ToolReduceParseError(
+        `Expected key=value in kwargs, got "${tok}" in tool "${plan?.name ?? '(inline)'}"`,
+        { toolName: plan?.name, body },
+      );
+    }
+    const key = tok.slice(0, eq).trim();
+    const rawVal = tok.slice(eq + 1).trim();
+    
+    // Handle inline objects: nested={sub1=val, sub2=val}
+    if (rawVal.startsWith('{') && rawVal.endsWith('}')) {
+      const innerBody = rawVal.slice(1, -1);
+      // Recursively parse inline objects — pass null for plan since field names differ
+      const innerObj = parseKwargsBody(innerBody, null);
+      out[key] = innerObj;
+    } else {
+      const field = plan?.fields?.find(f => f.name === key);
+      out[key] = coerceValue(rawVal, field?.type);
+    }
+  }
+  
+  // Handle dot-path keys for mixed usage (some inline, some dot paths)
+  const hasDotKeys = Object.keys(out).some(k => k.includes('.'));
+  if (hasDotKeys) {
+    return reconstructNested(out);
+  }
+  return out;
+}
+
+/**
+ * Comma-delimited tokenizer for kwargs. Splits on commas outside brackets/quotes,
+ * preserving quoted strings and array/bracket content.
+ */
+function tokenizeKwargs(input: string): string[] {
+  const out: string[] = [];
+  let cur = '';
+  let depth = 0;
+  let inQuote: '"' | "'" | null = null;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i]!;
+    if (inQuote) {
+      cur += ch;
+      if (ch === '\\' && i + 1 < input.length) {
+        cur += input[++i]!;
+      } else if (ch === inQuote) {
+        inQuote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      inQuote = ch;
+      cur += ch;
+      continue;
+    }
+    if (ch === '[' || ch === '{' || ch === '(') {
+      depth++;
+      cur += ch;
+      continue;
+    }
+    if (ch === ']' || ch === '}' || ch === ')') {
+      depth--;
+      cur += ch;
+      continue;
+    }
+    if (ch === ',' && depth === 0) {
+      if (cur.trim()) out.push(cur.trim());
+      cur = '';
+      continue;
+    }
+    cur += ch;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
 }
 
 /** key=value pairs; values may be quoted with " or '. */
@@ -194,12 +297,44 @@ export function coerceValue(raw: string, type: string | undefined): unknown {
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return unquote(raw);
   }
-  // Array literals: ["a","b"]
+  // Array literals: ["a","b"] or [a, b, c]
   if (raw.startsWith('[') && raw.endsWith(']')) {
     try {
       return JSON.parse(raw);
     } catch {
-      // Fall through if JSON parse fails — treat as string
+      // Fall back to unquoted item parsing: [a, b, c] → ["a", "b", "c"]
+      const inner = raw.slice(1, -1).trim();
+      if (!inner) return [];
+      // Check if it's a simple comma-separated list with no nested quotes/braces
+      const items: unknown[] = [];
+      let cur = '';
+      let depth = 0;
+      let inQuote: string | null = null;
+      for (let i = 0; i < inner.length; i++) {
+        const ch = inner[i]!;
+        if (inQuote) {
+          cur += ch;
+          if (ch === inQuote && (i === 0 || inner[i - 1] !== '\\')) inQuote = null;
+        } else if (ch === '\\' && i + 1 < inner.length) {
+          cur += ch + inner[++i]!;
+        } else if (ch === '"' || ch === "'") {
+          inQuote = ch;
+          cur += ch;
+        } else if (ch === '{' || ch === '[' || ch === '(') {
+          depth++;
+          cur += ch;
+        } else if (ch === '}' || ch === ']' || ch === ')') {
+          depth--;
+          cur += ch;
+        } else if (ch === ',' && depth === 0 && !inQuote) {
+          items.push(coerceValue(cur.trim(), type?.replace(/\[\]$/, '')));
+          cur = '';
+        } else {
+          cur += ch;
+        }
+      }
+      if (cur.trim()) items.push(coerceValue(cur.trim(), type?.replace(/\[\]$/, '')));
+      if (items.length > 0 || inner.trim()) return items;
     }
   }
   if (type === 'string') return raw;

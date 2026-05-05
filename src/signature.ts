@@ -103,28 +103,97 @@ function collectFlattenedPaths(
 }
 
 /** Render a tool as a compact one-line signature. */
-export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json'): string {
+export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json' | 'kwargs'): string {
   const schema = tool.inputSchema as SchemaNode;
   const desc = tool.description ? ` — ${oneLine(tool.description)}` : '';
   if (encoding === 'json') {
     return `${tool.name}: <json>${desc}`;
   }
   if (!schema?.properties) {
-    return `${tool.name}: ()${desc}`;
+    const parens = encoding === 'kwargs' ? '()' : '()';
+    return `${tool.name}: ${parens}${desc}`;
   }
   const required = new Set(schema.required ?? []);
-  // For wire-capable nested schemas, use flattened paths
+  // Build field descriptions
+  let fieldParts: string[];
+  
+  if (encoding === 'kwargs') {
+    // Template-style: param="", flag=false, count=0 — model fills in values
+    // For nested objects, render inline: nested={sub1="", sub2=0}
+    if (isWireCapable(schema)) {
+      fieldParts = buildTemplateFields(schema, '', required);
+    } else {
+      fieldParts = Object.entries(schema.properties).map(([name]) => {
+        return `${name}=`;
+      });
+    }
+    return `${tool.name}(${fieldParts.join(', ')})${desc}`;
+  }
+  
+  // wire format
   if (isWireCapable(schema)) {
     const fields = collectFlattenedPaths(schema, '', required);
-    const parts = fields.map(f => `${f.name}${f.required ? '' : '?'}:${f.type}`);
-    return `${tool.name}: ${parts.join(', ')}${desc}`;
+    fieldParts = fields.map(f => `${f.name}${f.required ? '' : '?'}:${f.type}`);
+  } else {
+    fieldParts = Object.entries(schema.properties).map(([name, node]) => {
+      const opt = required.has(name) ? '' : '?';
+      const t = leafTypeLabel(node as SchemaNode);
+      return `${name}${opt}:${t}`;
+    });
   }
-  const props = Object.entries(schema.properties).map(([name, node]) => {
-    const opt = required.has(name) ? '' : '?';
-    const t = leafTypeLabel(node as SchemaNode);
-    return `${name}${opt}:${t}`;
-  });
-  return `${tool.name}: ${props.join(', ')}${desc}`;
+  return `${tool.name}: ${fieldParts.join(', ')}${desc}`;
+}
+
+/**
+ * Build template-style kwargs fields with placeholder values:
+ * - string → ""
+ * - number/integer → 0
+ * - boolean → false
+ * - array → []
+ * - nested object → {sub="", flag=false}
+ * Optional params get a ? suffix: param?=""
+ */
+function buildTemplateFields(
+  schema: SchemaNode,
+  prefix: string,
+  topLevelRequired: Set<string>,
+): string[] {
+  const out: string[] = [];
+  if (!schema.properties) return out;
+  for (const [name, node] of Object.entries(schema.properties)) {
+    const key = prefix ? `${prefix}.${name}` : name;
+    const required = prefix
+      ? (schema.required ?? []).includes(name)
+      : topLevelRequired.has(name);
+    const opt = required ? '' : '?';
+    if (node.type === 'object' && node.properties) {
+      // Inline object: nested={sub1=""?, sub2?=0}
+      const inner = buildTemplateFields(node, '', new Set(node.required ?? []));
+      out.push(`${key}${opt}={${inner.join(', ')}}`);
+    } else {
+      out.push(`${key}${opt}=${templatePlaceholder(node)}`);
+    }
+  }
+  return out;
+}
+
+/** Create a placeholder value that shows the type. */
+function templatePlaceholder(node: SchemaNode): string {
+  if (Array.isArray(node.enum)) {
+    const first = node.enum[0];
+    return typeof first === 'string' ? `"${first}"` : String(first);
+  }
+  if (typeof node.type === 'string') {
+    if (node.type === 'string') return '""';
+    if (node.type === 'number' || node.type === 'integer') return '0';
+    if (node.type === 'boolean') return 'false';
+    if (node.type === 'array') return '[]';
+    if (node.type === 'object' && node.properties) {
+      const inner = buildTemplateFields(node, '', new Set(node.required ?? []));
+      return `{${inner.join(', ')}}`;
+    }
+  }
+  return '""';
 }
 
 function leafTypeLabel(node: SchemaNode): string {
@@ -159,7 +228,7 @@ export function planTools(
     const schema = tool.inputSchema as SchemaNode;
     const flat = isFlatObject(schema);
     const wireCapable = !flat && isWireCapable(schema);
-    let encoding: 'wire' | 'json' = options.syntax;
+    let encoding: 'wire' | 'json' | 'kwargs' = options.syntax;
     
     if (!flat) {
       if (options.fallbackToJson === 'error') {
@@ -170,8 +239,8 @@ export function planTools(
         );
       }
       if (options.fallbackToJson === 'complex') {
-        // Use wire for flattenable nested schemas, JSON for truly complex ones
-        encoding = wireCapable ? 'wire' : 'json';
+        // Use wire/kwargs for flattenable nested schemas, JSON for truly complex ones
+        encoding = wireCapable ? options.syntax : 'json';
       }
     }
 
