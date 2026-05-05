@@ -135,9 +135,17 @@ async function main() {
   const ab = args.ablations;
 
   if (ab['syntax']) {
-    // --ablation syntax=wire|json: override compact with different syntaxes
+    // --ablation syntax=wire|json|yaml|all: override compact with different syntaxes
     const syntax = ab['syntax']!;
     if (syntax === 'json') {
+      modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
+    } else if (syntax === 'yaml') {
+      modes.push({ mode: 'compact', label: 'compact (yaml)', ablation: 'syntax=yaml' });
+    } else if (syntax === 'all') {
+      // Run all three syntaxes for direct comparison
+      modes.push({ mode: 'json', label: 'json', ablation: undefined });
+      modes.push({ mode: 'compact', label: 'compact (wire)', ablation: 'syntax=wire' });
+      modes.push({ mode: 'compact', label: 'compact (yaml)', ablation: 'syntax=yaml' });
       modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
     } else {
       // wire is the default compact
@@ -245,8 +253,14 @@ async function main() {
       // the ablation field.
       return compactTools();
     }
-    if (ablation?.startsWith('syntax=')) {
-      return compactTools();
+    if (ablation === 'syntax=json') {
+      return compactTools({ syntax: 'json' });
+    }
+    if (ablation === 'syntax=yaml') {
+      return compactTools({ syntax: 'yaml' });
+    }
+    if (ablation === 'syntax=wire') {
+      return compactTools({ syntax: 'wire' });
     }
     return compactTools();
   }

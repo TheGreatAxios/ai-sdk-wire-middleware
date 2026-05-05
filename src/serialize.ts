@@ -30,6 +30,9 @@ export function serializeCall(toolName: string, input: string, plan: ToolPlan | 
   if (!plan || plan.encoding === 'json' || !args || typeof args !== 'object') {
     return `${CALL_OPEN}${toolName} ${input || '{}'}${CALL_CLOSE}`;
   }
+  if (plan.encoding === 'yaml') {
+    return serializeYamlCall(toolName, args as Record<string, unknown>, plan);
+  }
   // wire: flatten nested objects into dot-path keys
   const entries = flattenNested(args as Record<string, unknown>);
   const parts: string[] = [];
@@ -38,6 +41,50 @@ export function serializeCall(toolName: string, input: string, plan: ToolPlan | 
     parts.push(`${k}=${formatValue(v, fieldType)}`);
   }
   return `${CALL_OPEN}${toolName}${parts.length ? ' ' + parts.join(' ') : ''}${CALL_CLOSE}`;
+}
+
+/** Serialize a call in YAML flow-style format. */
+function serializeYamlCall(toolName: string, args: Record<string, unknown>, plan: ToolPlan): string {
+  const entries = flattenNested(args);
+  const parts: string[] = [];
+  for (const [k, v] of entries) {
+    const fieldType = plan.fields.find(f => f.name === k)?.type;
+    parts.push(`${k}: ${formatYamlValue(v, fieldType)}`);
+  }
+  const body = parts.length ? `{${parts.join(', ')}}` : '{}';
+  return `${CALL_OPEN}${toolName}: ${body}${CALL_CLOSE}`;
+}
+
+/** Format a value for YAML flow-style. */
+function formatYamlValue(v: unknown, type: string | undefined): string {
+  if (v == null) return 'null';
+  if (typeof v === 'boolean') return v ? 'true' : 'false';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'string') {
+    return formatYamlString(v, type);
+  }
+  if (Array.isArray(v)) {
+    const items = v.map(item => formatYamlValue(item, undefined));
+    return `[${items.join(', ')}]`;
+  }
+  if (typeof v === 'object') {
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
+
+/** Format a string for YAML, quoting only when necessary. */
+function formatYamlString(s: string, type: string | undefined): string {
+  // Quote if: empty, contains special YAML chars, looks like a keyword/number
+  if (s.length === 0) return '""';
+  const needsQuotes = /[@":{}\[\],&*!?|>'\s]/.test(s) ||
+                      s === 'true' || s === 'false' || s === 'null' || s === 'yes' || s === 'no' ||
+                      /^-?\d/.test(s);
+  if (!needsQuotes) return s;
+  // Prefer single quotes if no single quotes inside
+  if (!s.includes("'")) return `'${s}'`;
+  // Use double quotes and escape
+  return JSON.stringify(s);
 }
 
 function safeParse(input: string): unknown {

@@ -14,11 +14,30 @@ numbers/booleans unquoted, arrays as ["a","b"], nested as parent.child=val.
 
 Only <call>…</call> is parsed — no native JSON tool calls.`;
 
+const YAML_HEADER = `# YAML format
+
+Use <call>toolName: {key: value, key: value}</call> instead of JSON tools.
+
+Examples:
+<call>getWeather: {location: Austin, units: metric}</call>
+<call>bookMeeting: {title: "Review", date: 2026-05-15, duration: 60, attendees: ["a@c.com"], room: A}</call>
+
+Flow-style YAML inside the braces: key: value pairs, strings in quotes if they contain spaces or colons,
+numbers and booleans unquoted, arrays as ["a", "b"]. Nested objects use dot-paths: profile.name: Alice.
+<json> tools use {"key": "val"} inside the call.
+
+Only <call>…</call> is parsed — no native JSON tool calls.`;
+
 export function buildSystemPrompt(plans: ToolPlan[], options: CompactToolsOptions): string {
-  const header = options.manualHeader ?? DEFAULT_HEADER;
+  const header = options.manualHeader ?? getDefaultHeader(options.syntax ?? 'wire');
   if (plans.length === 0) return header;
   const lines = plans.map(p => `- ${p.signature}`).join('\n');
   return `${header}\n\n## Available tools\n\n${lines}`;
+}
+
+function getDefaultHeader(syntax: 'wire' | 'json' | 'yaml'): string {
+  if (syntax === 'yaml') return YAML_HEADER;
+  return DEFAULT_HEADER;
 }
 
 /**
