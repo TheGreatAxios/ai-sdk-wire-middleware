@@ -134,17 +134,14 @@ async function main() {
   const ab = args.ablations;
 
   if (ab['syntax']) {
-    // --ablation syntax=wire|json|yaml|all: override compact with different syntaxes
+    // --ablation syntax=wire|json: override compact with different syntaxes
     const syntax = ab['syntax']!;
     if (syntax === 'json') {
       modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
-    } else if (syntax === 'yaml') {
-      modes.push({ mode: 'compact', label: 'compact (yaml)', ablation: 'syntax=yaml' });
     } else if (syntax === 'all') {
-      // Run all three syntaxes for direct comparison
+      // Run both syntaxes for direct comparison
       modes.push({ mode: 'json', label: 'json', ablation: undefined });
       modes.push({ mode: 'compact', label: 'compact (wire)', ablation: 'syntax=wire' });
-      modes.push({ mode: 'compact', label: 'compact (yaml)', ablation: 'syntax=yaml' });
       modes.push({ mode: 'compact', label: 'compact (json)', ablation: 'syntax=json' });
     } else {
       // wire is the default compact
@@ -254,9 +251,6 @@ async function main() {
     }
     if (ablation === 'syntax=json') {
       return compactTools({ syntax: 'json' });
-    }
-    if (ablation === 'syntax=yaml') {
-      return compactTools({ syntax: 'yaml' });
     }
     if (ablation === 'syntax=wire') {
       return compactTools({ syntax: 'wire' });
@@ -406,11 +400,12 @@ async function main() {
   // Further identify dead models: 0 OK rows across all modes → skip from summary
   const modelTotalOk: Record<string, number> = {};
   for (const r of realRows) {
+    if (!r.model) continue;
     modelTotalOk[r.model] = (modelTotalOk[r.model] ?? 0) + (r.judge?.verdict === 'equivalent' ? 1 : 0);
   }
   const livingModels = new Set(Object.entries(modelTotalOk).filter(([,v]) => v > 0).map(([m]) => m));
-  const deadModelRows = realRows.filter(r => !livingModels.has(r.model));
-  const liveRows = realRows.filter(r => livingModels.has(r.model));
+  const deadModelRows = realRows.filter(r => r.model && !livingModels.has(r.model));
+  const liveRows = realRows.filter(r => r.model && livingModels.has(r.model));
 
   // Group by (model, mode, ablation) for live rows
   const groupCounts: Record<string, { total: number; eq: number; outTokens: number }> = {};
@@ -447,12 +442,16 @@ async function main() {
   if (apiErrorRows.length > 0) {
     const apiErrors: Record<string, string[]> = {};
     for (const r of apiErrorRows) {
-      if (!apiErrors[r.model]) apiErrors[r.model] = [];
-      if (apiErrors[r.model].length < 1) apiErrors[r.model].push(r.judge!.reason);
+      const m = r.model;
+      if (!m) continue;
+      if (!apiErrors[m]) apiErrors[m] = [];
+      const reason = r.judge?.reason;
+      if (apiErrors[m].length < 1 && reason) apiErrors[m].push(reason);
     }
     console.log(`\n${apiErrorRows.length} API errors (recorded as ok=false rows):`);
-    for (const [model, reasons] of Object.entries(apiErrors).sort()) {
-      for (const r of reasons) console.log(`  ${model}: ${r}`);
+    const sorted = Object.entries(apiErrors).sort();
+    for (const [model, reasons] of sorted) {
+      for (const r of reasons!) console.log(`  ${model}: ${r}`);
     }
   }
 

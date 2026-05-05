@@ -28,7 +28,6 @@ import { cases, providerTools, type ToolCase } from './tools.ts';
 import { countTokens, TOKENIZER_NAME } from './lib/tokenizer.ts';
 import { xmlEncodeCall, xmlEncodeManual } from './encoders/xml-anthropic.ts';
 import { pyEncodeCall, pyEncodeManual } from './encoders/python-dsl.ts';
-import { yamlEncodeCallCompact, yamlEncodeManualCompact } from './encoders/yaml.ts';
 import { newRunId } from './lib/artifact.ts';
 
 function nativeJsonCallText(c: ToolCase): string {
@@ -57,7 +56,6 @@ interface PerCallRow {
   compact: number;
   xml: number;
   pythonDsl: number;
-  yaml: number;
   reductionVsJson: number;
 }
 
@@ -68,14 +66,13 @@ interface OfflineArtifact {
   tokenizer: string;
   tools: number;
   cases: number;
-  manual: { json: number; compact: number; xml: number; pythonDsl: number; yaml: number };
+  manual: { json: number; compact: number; xml: number; pythonDsl: number };
   perCall: PerCallRow[];
-  totals: { json: number; compact: number; xml: number; pythonDsl: number; yaml: number };
+  totals: { json: number; compact: number; xml: number; pythonDsl: number };
   reductions: {
     compactVsJson: number;
     xmlVsJson: number;
     pythonDslVsJson: number;
-    yamlVsJson: number;
   };
   correctness: { passed: number; total: number };
 }
@@ -88,14 +85,11 @@ function bench(runId: string): OfflineArtifact {
   const compactSystem = buildSystemPrompt(plans, { syntax: 'wire', fallbackToJson: 'complex' });
   const xmlManual = xmlEncodeManual(plans);
   const pyManual = pyEncodeManual(plans);
-  const yamlManual = yamlEncodeManualCompact(plans);
-
   const manual = {
     json: countTokens(nativeDefBytes),
     compact: countTokens(compactSystem),
     xml: countTokens(xmlManual),
     pythonDsl: countTokens(pyManual),
-    yaml: countTokens(yamlManual),
   };
 
   // ── 2. Per-call output cost (every encoding) ──
@@ -104,14 +98,12 @@ function bench(runId: string): OfflineArtifact {
     const k = countTokens(c.compactCall);
     const x = countTokens(xmlEncodeCall(c.nativeCall.name, c.nativeCall.arguments));
     const p = countTokens(pyEncodeCall(c.nativeCall.name, c.nativeCall.arguments));
-    const y = countTokens(yamlEncodeCallCompact(c.nativeCall.name, c.nativeCall.arguments));
     return {
       case: c.name,
       json: j,
       compact: k,
       xml: x,
       pythonDsl: p,
-      yaml: y,
       reductionVsJson: round((j - k) / j),
     };
   });
@@ -121,14 +113,12 @@ function bench(runId: string): OfflineArtifact {
     compact: perCall.reduce((a, r) => a + r.compact, 0),
     xml: perCall.reduce((a, r) => a + r.xml, 0),
     pythonDsl: perCall.reduce((a, r) => a + r.pythonDsl, 0),
-    yaml: perCall.reduce((a, r) => a + r.yaml, 0),
   };
 
   const reductions = {
     compactVsJson: round((totals.json - totals.compact) / totals.json),
     xmlVsJson: round((totals.json - totals.xml) / totals.json),
     pythonDslVsJson: round((totals.json - totals.pythonDsl) / totals.json),
-    yamlVsJson: round((totals.json - totals.yaml) / totals.json),
   };
 
   console.log('=== ai-sdk-wire-middleware offline benchmark ===\n');
@@ -141,7 +131,6 @@ function bench(runId: string): OfflineArtifact {
     { encoding: 'compact (manual + sigs)', tokens: manual.compact },
     { encoding: 'xml-anthropic (manual + sigs)', tokens: manual.xml },
     { encoding: 'python-dsl (manual + sigs)', tokens: manual.pythonDsl },
-    { encoding: 'yaml-compact (manual + sigs)', tokens: manual.yaml },
   ]);
 
   console.log('\nPer-call output tokens (NOT cached — paid every call):');
@@ -153,7 +142,6 @@ function bench(runId: string): OfflineArtifact {
     { encoding: 'compact', tokens: totals.compact, vsJson: pct(reductions.compactVsJson) },
     { encoding: 'xml-anthropic', tokens: totals.xml, vsJson: pct(reductions.xmlVsJson) },
     { encoding: 'python-dsl', tokens: totals.pythonDsl, vsJson: pct(reductions.pythonDslVsJson) },
-    { encoding: 'yaml-compact', tokens: totals.yaml, vsJson: pct(reductions.yamlVsJson) },
   ]);
 
   return {

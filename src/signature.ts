@@ -103,36 +103,27 @@ function collectFlattenedPaths(
 }
 
 /** Render a tool as a compact one-line signature. */
-export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json' | 'yaml'): string {
+export function renderSignature(tool: FunctionTool, encoding: 'wire' | 'json'): string {
   const schema = tool.inputSchema as SchemaNode;
   const desc = tool.description ? ` — ${oneLine(tool.description)}` : '';
   if (encoding === 'json') {
     return `${tool.name}: <json>${desc}`;
   }
   if (!schema?.properties) {
-    if (encoding === 'yaml') return `${tool.name}: {}${desc}`;
     return `${tool.name}: ()${desc}`;
   }
   const required = new Set(schema.required ?? []);
   // For wire-capable nested schemas, use flattened paths
   if (isWireCapable(schema)) {
     const fields = collectFlattenedPaths(schema, '', required);
-    if (encoding === 'yaml') {
-      // YAML format: key: type, key?: type
-      const parts = fields.map(f => `${f.name}${f.required ? '' : '?'}: ${f.type}`);
-      return `${tool.name}: {${parts.join(', ')}}${desc}`;
-    }
     const parts = fields.map(f => `${f.name}${f.required ? '' : '?'}:${f.type}`);
     return `${tool.name}: ${parts.join(', ')}${desc}`;
   }
   const props = Object.entries(schema.properties).map(([name, node]) => {
     const opt = required.has(name) ? '' : '?';
     const t = leafTypeLabel(node as SchemaNode);
-    return encoding === 'yaml' ? `${name}${opt}: ${t}` : `${name}${opt}:${t}`;
+    return `${name}${opt}:${t}`;
   });
-  if (encoding === 'yaml') {
-    return `${tool.name}: {${props.join(', ')}}${desc}`;
-  }
   return `${tool.name}: ${props.join(', ')}${desc}`;
 }
 
@@ -168,21 +159,9 @@ export function planTools(
     const schema = tool.inputSchema as SchemaNode;
     const flat = isFlatObject(schema);
     const wireCapable = !flat && isWireCapable(schema);
-    let encoding: 'wire' | 'json' | 'yaml' = options.syntax;
+    let encoding: 'wire' | 'json' = options.syntax;
     
-    // YAML uses the same capability model as wire
-    if (options.syntax === 'yaml') {
-      if (!flat && options.fallbackToJson === 'error') {
-        throw new Error(
-          `ai-sdk-wire-middleware: tool "${tool.name}" has a non-flat input schema; ` +
-            `set fallbackToJson:"complex" (default) to allow JSON encoding for it, ` +
-            `or fallbackToJson:"force" to attempt flattening anyway.`,
-        );
-      }
-      if (!flat && options.fallbackToJson === 'complex') {
-        encoding = wireCapable ? 'yaml' : 'json';
-      }
-    } else if (!flat) {
+    if (!flat) {
       if (options.fallbackToJson === 'error') {
         throw new Error(
           `ai-sdk-wire-middleware: tool "${tool.name}" has a non-flat input schema; ` +

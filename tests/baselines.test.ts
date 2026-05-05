@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { xmlEncodeCall, xmlEncodeManual } from '../bench/encoders/xml-anthropic.ts';
 import { pyEncodeCall, pyEncodeManual } from '../bench/encoders/python-dsl.ts';
-import { yamlEncodeCallCompact, yamlEncodeManualCompact } from '../bench/encoders/yaml.ts';
+
 import { planTools } from '../src/signature.ts';
 import { cases, providerTools } from '../bench/tools.ts';
 
@@ -62,43 +62,4 @@ describe('python-dsl encoder', () => {
   });
 });
 
-describe('yaml-compact encoder', () => {
-  for (const c of cases) {
-    test(`encodeCallCompact is deterministic and well-formed: ${c.name}`, () => {
-      const out = yamlEncodeCallCompact(c.nativeCall.name, c.nativeCall.arguments);
-      const out2 = yamlEncodeCallCompact(c.nativeCall.name, c.nativeCall.arguments);
-      expect(out).toBe(out2);
-      // Format: toolName: {key: value, key: value}
-      expect(out.startsWith(`${c.nativeCall.name}:`)).toBe(true);
-      expect(out.includes('{')).toBe(true);
-      expect(out.endsWith('}')).toBe(true);
-    });
-  }
 
-  test('booleans render as yaml literals', () => {
-    const out = yamlEncodeCallCompact('x', { a: true, b: false });
-    expect(out).toContain('true');
-    expect(out).toContain('false');
-  });
-
-  test('null renders as null', () => {
-    const out = yamlEncodeCallCompact('x', { a: null });
-    expect(out).toContain('null');
-  });
-
-  test('strings with special chars are quoted', () => {
-    const out = yamlEncodeCallCompact('x', { s: 'hello: world' });
-    // Should quote strings containing colons
-    expect(out.includes("'") || out.includes('"')).toBe(true);
-  });
-
-  test('arrays are flow-style', () => {
-    const out = yamlEncodeCallCompact('x', { items: ['a', 'b'] });
-    expect(out).toContain('[a, b]');
-  });
-
-  test('manual contains every tool name', () => {
-    const m = yamlEncodeManualCompact(plans);
-    for (const p of plans) expect(m).toContain(p.name);
-  });
-});

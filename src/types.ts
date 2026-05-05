@@ -6,9 +6,8 @@ export interface CompactToolsOptions {
    * Wire syntax used inside `<call>…</call>`.
    * - `wire` (default): `<call>name key="value" n=42 ok=true</call>`
    * - `json`: `<call>name {"key":"value"}</call>` (no compaction; useful as a fallback)
-   * - `yaml`: `<call>name: {key: value, n: 42, ok: true}</call>` (YAML flow-style; small-model friendly)
    */
-  syntax?: 'wire' | 'json' | 'yaml';
+  syntax?: 'wire' | 'json';
   /**
    * What to do when a tool's input schema is not a flat record of primitives.
    * - `complex` (default): use JSON inside `<call>` for that tool only
@@ -42,7 +41,7 @@ export interface ToolPlan {
   /** Compact positional signature, e.g. `getWeather: location, units?` */
   signature: string;
   /** Wire encoding chosen for this tool. */
-  encoding: 'wire' | 'json' | 'yaml';
+  encoding: 'wire' | 'json';
   /** Ordered list of expected fields (for wire mode). */
   fields: Array<{ name: string; required: boolean; type: string }>;
   /** Original JSON Schema for coercion. */

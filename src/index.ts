@@ -11,10 +11,9 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
 /**
  * `compactTools()` — replace JSON tool calls with a compact `<call>name k=v</call>` syntax.
  *
- * Supports three encoding styles:
+ * Supports two encoding styles:
  * - `wire` (default): `<call>getWeather location=Austin units=metric</call>`
  * - `json`: `<call>getWeather {"location":"Austin","units":"metric"}</call>`
- * - `yaml`: `<call>getWeather: {location: Austin, units: metric}</call>`
  *
  * Plug into AI SDK v6 via `wrapLanguageModel`:
  *
@@ -25,12 +24,6 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
  * const model = wrapLanguageModel({
  *   model: anthropic('claude-sonnet-4-5'),
  *   middleware: compactTools({ fallbackToJson: 'complex' }),
- * });
- *
- * // Try YAML format for small models
- * const yamlModel = wrapLanguageModel({
- *   model: qwen('qwen3-235b-a22b'),
- *   middleware: compactTools({ syntax: 'yaml', fallbackToJson: 'complex' }),
  * });
  * ```
  */
