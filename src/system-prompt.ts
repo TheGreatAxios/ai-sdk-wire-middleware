@@ -15,10 +15,14 @@ numbers/booleans unquoted, arrays as ["a","b"], nested as parent.child=val.
 Only <call>…</call> is parsed — no native JSON tool calls.`;
 
 export function buildSystemPrompt(plans: ToolPlan[], options: CompactToolsOptions): string {
-  const header = options.manualHeader ?? DEFAULT_HEADER;
+  const header = options.manualHeader ?? getDefaultHeader(options.syntax ?? 'wire');
   if (plans.length === 0) return header;
   const lines = plans.map(p => `- ${p.signature}`).join('\n');
   return `${header}\n\n## Available tools\n\n${lines}`;
+}
+
+function getDefaultHeader(syntax: 'wire' | 'json'): string {
+  return DEFAULT_HEADER;
 }
 
 /**

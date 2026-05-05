@@ -85,7 +85,6 @@ function bench(runId: string): OfflineArtifact {
   const compactSystem = buildSystemPrompt(plans, { syntax: 'wire', fallbackToJson: 'complex' });
   const xmlManual = xmlEncodeManual(plans);
   const pyManual = pyEncodeManual(plans);
-
   const manual = {
     json: countTokens(nativeDefBytes),
     compact: countTokens(compactSystem),

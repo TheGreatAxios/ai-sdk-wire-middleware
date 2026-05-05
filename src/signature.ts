@@ -160,6 +160,7 @@ export function planTools(
     const flat = isFlatObject(schema);
     const wireCapable = !flat && isWireCapable(schema);
     let encoding: 'wire' | 'json' = options.syntax;
+    
     if (!flat) {
       if (options.fallbackToJson === 'error') {
         throw new Error(
