@@ -171,7 +171,51 @@ export function resolveProviders(options: {
     }
   }
 
-  // 3. Legacy per-provider env vars
+  // Resolve bare models (no provider prefix) to a real provider BEFORE checking
+  // legacy env vars or filtering by BENCH_PROVIDERS.
+  //
+  // If per-provider legacy env vars exist (ZAI_MODELS, OLLAMA_MODELS), prefer
+  // them over bare model assignment — the user explicitly configured per-provider
+  // model lists. Bare models are discarded and legacy vars picked up in step 3.
+  if (benchModelsByProvider['__bare__']?.length) {
+    const bareModels = benchModelsByProvider['__bare__'];
+    delete benchModelsByProvider['__bare__'];
+
+    const hasLegacyModels = Boolean(
+      process.env['ZAI_MODELS'] ||
+      process.env['OPENROUTER_MODELS'] ||
+      process.env['OLLAMA_MODELS']
+    );
+    if (!hasLegacyModels) {
+      let targetProvider: string | undefined;
+      const benchProvidersEnvForBare = process.env['BENCH_PROVIDERS'];
+      if (benchProvidersEnvForBare) {
+        const active = benchProvidersEnvForBare.split(',').map(s => s.trim()).filter(Boolean);
+        if (active.length === 1) {
+          targetProvider = active[0];
+        } else {
+          targetProvider = active.find(p =>
+            p === 'zai' ? Boolean(process.env['ZAI_BASE_URL'] && process.env['ZAI_API_KEY']) :
+            p === 'openrouter' ? Boolean(process.env['OPENROUTER_API_KEY']) :
+            p === 'ollama'
+          );
+        }
+      } else {
+        targetProvider = hasZaiConnection ? 'zai' :
+          hasOrConnection ? 'openrouter' : 'ollama';
+      }
+
+      if (targetProvider) {
+        const existing = benchModelsByProvider[targetProvider] ?? [];
+        benchModelsByProvider[targetProvider] = existing;
+        benchModelsByProvider[targetProvider]!.push(...bareModels);
+      }
+    }
+    // If hasLegacyModels, benchModelsByProvider is now empty after __bare__ deletion;
+    // step 3 below picks up the per-provider env vars.
+  }
+
+  // 3. Legacy per-provider env vars (runs when no CLI/BENCH_MODELS models have been resolved)
   if (Object.keys(benchModelsByProvider).length === 0) {
     // ZAI_MODELS or ZAI_MODEL
     const zaiEnv = process.env['ZAI_MODELS'];
@@ -192,40 +236,6 @@ export function resolveProviders(options: {
     const ollamaEnv = process.env['OLLAMA_MODELS'];
     if (ollamaEnv) {
       benchModelsByProvider['ollama'] = ollamaEnv.split(',').map(s => s.trim()).filter(Boolean);
-    }
-  }
-
-  // Resolve bare models (no provider prefix) to a real provider BEFORE filtering by
-  // BENCH_PROVIDERS, so bare models get assigned to the right provider first.
-  if (benchModelsByProvider['__bare__']?.length) {
-    const bareModels = benchModelsByProvider['__bare__'];
-    delete benchModelsByProvider['__bare__'];
-
-    let targetProvider: string | undefined;
-    const benchProvidersEnvForBare = process.env['BENCH_PROVIDERS'];
-    if (benchProvidersEnvForBare) {
-      const active = benchProvidersEnvForBare.split(',').map(s => s.trim()).filter(Boolean);
-      if (active.length === 1) {
-        // One provider specified — assign bare models to it.
-        targetProvider = active[0];
-      } else {
-        // Multiple providers — assign to the first connected one.
-        targetProvider = active.find(p =>
-          p === 'zai' ? Boolean(process.env['ZAI_BASE_URL'] && process.env['ZAI_API_KEY']) :
-          p === 'openrouter' ? Boolean(process.env['OPENROUTER_API_KEY']) :
-          p === 'ollama'
-        );
-      }
-    } else {
-      // No BENCH_PROVIDERS — use first connected provider.
-      targetProvider = hasZaiConnection ? 'zai' :
-        hasOrConnection ? 'openrouter' : 'ollama';
-    }
-
-    if (targetProvider) {
-      const existing = benchModelsByProvider[targetProvider] ?? [];
-      benchModelsByProvider[targetProvider] = existing;
-      benchModelsByProvider[targetProvider]!.push(...bareModels);
     }
   }
 

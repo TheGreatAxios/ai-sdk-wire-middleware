@@ -50,8 +50,7 @@ import {
 } from './lib/judge.ts';
 import { resolveModels } from './lib/models.ts';
 import { resolveProviders, type ProviderId, type ProviderConfig, type ResolvedProviders } from './lib/providers.ts';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+
 
 // ─────────────────────────────────────────────────────── main ──
 
@@ -399,41 +398,66 @@ async function main() {
   // Count ALL rows — a NO_CALL (ok=false) is a failure, not a skip.
   // It counts as not-equivalent and its output tokens are included.
   const allRows = loadRows(outPath);
-  const jsonRows = allRows.filter(r => r.mode === 'json');
-  const compactRows = allRows.filter(r => r.mode === 'compact' && !r.ablation);
 
-  const jsonEq = jsonRows.filter(r => r.judge?.verdict === 'equivalent').length;
-  const compactEq = compactRows.filter(r => r.judge?.verdict === 'equivalent').length;
-  const jsonTotal = jsonRows.length;
-  const compactTotal = compactRows.length;
-  const jsonOut = jsonRows.reduce((a, r) => a + (r.outputTokens ?? 0), 0);
-  const compactOut = compactRows.reduce((a, r) => a + (r.outputTokens ?? 0), 0);
+  // Separate API-error rows (model unavailable) from real-model rows
+  const apiErrorRows = allRows.filter(r => r.judge?.reason?.startsWith('API error:'));
+  const realRows = allRows.filter(r => !r.judge?.reason?.startsWith('API error:'));
 
-  // Pure call tokens from the offline bench (format efficiency, ignores preamble)
-  // Load the latest offline results to get per-case pure call sizes
-  const offlinePath = join(dirname(outPath), 'latest-offline.json');
-  let jsonPure = 0, compactPure = 0;
-  try {
-    const offline = JSON.parse(readFileSync(offlinePath, 'utf8'));
-    for (const c of offline.perCall) {
-      jsonPure += c.json;
-      compactPure += c.compact;
-    }
-  } catch {}
+  // Further identify dead models: 0 OK rows across all modes → skip from summary
+  const modelTotalOk: Record<string, number> = {};
+  for (const r of realRows) {
+    modelTotalOk[r.model] = (modelTotalOk[r.model] ?? 0) + (r.judge?.verdict === 'equivalent' ? 1 : 0);
+  }
+  const livingModels = new Set(Object.entries(modelTotalOk).filter(([,v]) => v > 0).map(([m]) => m));
+  const deadModelRows = realRows.filter(r => !livingModels.has(r.model));
+  const liveRows = realRows.filter(r => livingModels.has(r.model));
+
+  // Group by (model, mode, ablation) for live rows
+  const groupCounts: Record<string, { total: number; eq: number; outTokens: number }> = {};
+  for (const r of liveRows) {
+    const key = r.model + ' | ' + (r.mode === 'compact' ? r.mode + '(' + (r.ablation?.replace('syntax=','') ?? 'wire') + ')' : r.mode);
+    if (!groupCounts[key]) groupCounts[key] = { total: 0, eq: 0, outTokens: 0 };
+    groupCounts[key].total++;
+    if (r.judge?.verdict === 'equivalent') groupCounts[key].eq++;
+    groupCounts[key].outTokens += r.outputTokens ?? 0;
+  }
 
   console.log('\n=== summary ===');
-  if (jsonRows.length > 0) {
-    console.log(`JSON:    ${jsonEq}/${jsonTotal} equivalent  total=${jsonOut}  pure-call=${jsonPure}`);
+  for (const [key, v] of Object.entries(groupCounts).sort()) {
+    const pct = v.total > 0 ? (v.eq / v.total * 100).toFixed(0) + '%' : '-';
+    console.log(`${key}: ${v.eq}/${v.total} equivalent (${pct})  total-out=${v.outTokens}`);
   }
-  if (compactRows.length > 0) {
-    const totalReduction = jsonOut > 0 ? ((jsonOut - compactOut) / jsonOut * 100) : 0;
-    const pureReduction = jsonPure > 0 ? ((jsonPure - compactPure) / jsonPure * 100) : 0;
-    console.log(`Compact: ${compactEq}/${compactTotal} equivalent  total=${compactOut}  pure-call=${compactPure}`);
-    console.log(`Reduction (total, incl preamble): ${(jsonOut - compactOut)} (${totalReduction.toFixed(1)}%)`);
-    console.log(`Reduction (pure call, format only): ${(jsonPure - compactPure)} (${pureReduction.toFixed(1)}%)`);
+
+  // Dead model rows (0% across all modes — likely doesn'\''t support structured output)
+  const deadModels = new Set(deadModelRows.map(r => r.model));
+  if (deadModels.size > 0) {
+    for (const m of [...deadModels].sort()) {
+      const rows = deadModelRows.filter(r => r.model === m);
+      const byMode: Record<string, number> = {};
+      for (const r of rows) {
+        const key = r.mode === 'compact' ? r.mode + '(' + (r.ablation?.replace('syntax=','') ?? 'wire') + ')' : r.mode;
+        byMode[key] = (byMode[key] ?? 0) + 1;
+      }
+      const modeDesc = Object.entries(byMode).map(([k, n]) => n + '×' + k).join(', ');
+      console.log(`  ${m}: 0/${rows.length} equivalent (${modeDesc})`);
+    }
   }
+
+  // API errors grouped by model
+  if (apiErrorRows.length > 0) {
+    const apiErrors: Record<string, string[]> = {};
+    for (const r of apiErrorRows) {
+      if (!apiErrors[r.model]) apiErrors[r.model] = [];
+      if (apiErrors[r.model].length < 1) apiErrors[r.model].push(r.judge!.reason);
+    }
+    console.log(`\n${apiErrorRows.length} API errors (recorded as ok=false rows):`);
+    for (const [model, reasons] of Object.entries(apiErrors).sort()) {
+      for (const r of reasons) console.log(`  ${model}: ${r}`);
+    }
+  }
+
   if (errors.length > 0) {
-    console.log(`\n${errors.length} errors (recorded as ok=false rows):`);
+    console.log(`\n${errors.length} runtime errors:`);
     for (const e of errors.slice(0, 10)) console.log(`  ${e}`);
     if (errors.length > 10) console.log(`  … and ${errors.length - 10} more`);
   }
