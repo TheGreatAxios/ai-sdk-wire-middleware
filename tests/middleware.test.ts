@@ -7,7 +7,15 @@ import type {
   LanguageModelV4StreamPart,
   LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
-import { compactTools } from '../src/index.ts';
+import {
+  CALL_CLOSE,
+  CALL_OPEN,
+  compactTools,
+  DEFAULT_COMPACT_TOOLS_OPTIONS,
+  isWireCapable,
+  parseCalls,
+  resolveCompactToolsOptions,
+} from '../src/index.ts';
 
 /** Build a mock LanguageModelV4 that returns whatever content/stream you give it. */
 function makeMockModel(opts: {
@@ -378,5 +386,26 @@ describe('AI SDK v7 integration (wrapLanguageModel)', () => {
     expect(call).toBeDefined();
     expect((call as any).toolName).toBe('getWeather');
     expect(JSON.parse((call as any).input)).toEqual({ location: 'Austin', units: 'metric' });
+  });
+
+  test('public API exports defaults, option resolver, and parser/schema helpers', () => {
+    expect(DEFAULT_COMPACT_TOOLS_OPTIONS).toEqual({
+      syntax: 'wire',
+      fallbackToJson: 'complex',
+      placement: 'last',
+      debug: false,
+    });
+    expect(Object.isFrozen(DEFAULT_COMPACT_TOOLS_OPTIONS)).toBe(true);
+    expect(resolveCompactToolsOptions({ syntax: 'json', debug: true })).toEqual({
+      syntax: 'json',
+      fallbackToJson: 'complex',
+      placement: 'last',
+      manualHeader: undefined,
+      debug: true,
+    });
+    expect(CALL_OPEN).toBe('<call>');
+    expect(CALL_CLOSE).toBe('</call>');
+    expect(typeof parseCalls).toBe('function');
+    expect(typeof isWireCapable).toBe('function');
   });
 });

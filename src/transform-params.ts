@@ -2,7 +2,7 @@ import type {
   LanguageModelV4CallOptions,
   LanguageModelV4Message,
 } from '@ai-sdk/provider';
-import type { CompactToolsOptions, FunctionTool, ToolPlan } from './types.ts';
+import type { FunctionTool, ResolvedCompactToolsOptions, ToolPlan } from './types.ts';
 import { planTools } from './signature.ts';
 import { buildSystemPrompt, injectSystemPrompt } from './system-prompt.ts';
 import { serializeCall, serializeToolResult } from './serialize.ts';
@@ -11,8 +11,7 @@ import { stashPlans } from './provider-options.ts';
 /** Implements the transformParams hook. */
 export async function transformParams(
   params: LanguageModelV4CallOptions,
-  options: Required<Pick<CompactToolsOptions, 'syntax' | 'fallbackToJson' | 'placement'>> &
-    Pick<CompactToolsOptions, 'manualHeader' | 'debug'>,
+  options: ResolvedCompactToolsOptions,
 ): Promise<LanguageModelV4CallOptions> {
   const functionTools = (params.tools ?? []).filter(
     (t): t is FunctionTool => (t as { type?: string }).type === 'function',

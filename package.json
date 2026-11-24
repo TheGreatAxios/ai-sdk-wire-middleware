@@ -16,6 +16,7 @@
   "scripts": {
     "test": "bun test",
     "typecheck": "tsc --noEmit",
+    "build": "bun build src/index.ts --outdir dist --target bun --packages external",
     "bench": "bun run bench/eval.ts",
     "bench:live": "bun run bench/live.ts"
   },
