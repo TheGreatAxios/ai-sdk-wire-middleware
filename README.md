@@ -97,7 +97,51 @@ bun add ai-sdk-wire-middleware
 npm i ai-sdk-wire-middleware
 ```
 
-**Peer dependencies:** `ai@^6`, `@ai-sdk/provider@^3`, `zod@^3 || ^4`.
+**Peer dependencies:** `ai@^7`, `@ai-sdk/provider@^4`, `zod@^3 || ^4`.
+
+---
+
+## Local Ollama Quickstart
+
+Works out of the box with any OpenAI-compatible local server (Ollama, LM Studio, vLLM, llama.cpp):
+
+```ts
+import { createOpenAI } from '@ai-sdk/openai';
+import { generateText, stepCountIs, tool, wrapLanguageModel } from 'ai';
+import { compactTools } from 'ai-sdk-wire-middleware';
+import { z } from 'zod';
+
+const ollama = createOpenAI({
+  baseURL: process.env.OLLAMA_BASE_URL ?? 'http://localhost:11434/v1',
+  apiKey: 'ollama', // Ollama ignores the key
+});
+
+const model = wrapLanguageModel({
+  model: ollama.chat(process.env.OLLAMA_MODEL ?? 'qwen2.5:14b'),
+  middleware: compactTools(),
+});
+
+const result = await generateText({
+  model,
+  stopWhen: stepCountIs(4),
+  tools: {
+    getWeather: tool({
+      description: 'Get the weather for a city',
+      inputSchema: z.object({
+        location: z.string(),
+        units: z.enum(['metric', 'imperial']).optional(),
+      }),
+      execute: async ({ location, units }) =>
+        `72°${units === 'metric' ? 'C' : 'F'} in ${location}`,
+    }),
+  },
+  prompt: 'What is the weather in Austin in metric units?',
+});
+
+console.log(result.text);
+```
+
+See [examples/ollama-quickstart.ts](examples/ollama-quickstart.ts) for a runnable script (`bun run examples/ollama-quickstart.ts`).
 
 ---
 
@@ -105,7 +149,7 @@ npm i ai-sdk-wire-middleware
 
 ### `compactTools(options?)`
 
-Returns a `LanguageModelV3Middleware` you pass to `wrapLanguageModel`.
+Returns a `LanguageModelV4Middleware` you pass to `wrapLanguageModel`.
 
 ```ts
 compactTools({
@@ -126,9 +170,20 @@ compactTools({
 
 `wire` is the most readable for the model, supports optional fields cleanly, and is fully whitespace-tolerant.
 
+#### Nested JSON arrays & objects in `wire` mode
+
+Values inside `key=value` tokens can also be inline JSON arrays or objects — including arrays of objects with internal whitespace, nested brackets/braces, and multiline formatting:
+
+```
+<call>stage_field file="census_2025.csv" entries=[{"row": 0, "column": "Provider CCN", "field": "ws_s2.provider_ccn"}]</call>
+<call>query table=users filter={"status": "active", "roles": ["admin", "editor"]}</call>
+```
+
+The tokenizer tracks balanced `[…]` and `{…}` containers (while ignoring brackets/braces inside quoted strings) and parses them with `JSON.parse`, so models can mix concise `key=value` arguments with structured payloads in a single `<call>`.
+
 #### `fallbackToJson`
 
-Tools whose input schema is **not** a flat record of primitives (nested objects, arrays, anyOf unions) can't be expressed in `wire` syntax. By default (`'complex'`) those tools fall back to `json` encoding while flat tools keep using `wire`. Use `'error'` to fail loudly, or `'force'` to flatten everything (not recommended).
+Flat objects, arrays of wire-compatible items, and shallow nested objects (flattened via dot paths) use `wire` syntax by default. Tools with deeply nested schemas or `anyOf`/`oneOf` unions fall back to `json` encoding inside `<call>` when `fallbackToJson` is `'complex'` (default), while simpler tools keep using `wire`. Use `'error'` to fail loudly, or `'force'` to flatten everything (not recommended).
 
 ---
 
@@ -210,7 +265,7 @@ Other good free models to try: `qwen/qwen3-coder:free`, `meta-llama/llama-3.3-70
 bun test
 ```
 
-219 tests cover the parser, signature compiler, transform-params, wrap-generate, wrap-stream (including character-level streaming and split-tag handling), history rewriting, serialization, artifact I/O, and edge cases (unicode, internal quotes, long SQL, nested schemas, multiple calls).
+226 tests cover the parser (including nested JSON arrays/objects and multiline values), signature compiler, transform-params, wrap-generate, wrap-stream (including character-level streaming and split-tag handling), AI SDK v7 `wrapLanguageModel` integration, history rewriting, serialization, artifact I/O, and edge cases (unicode, internal quotes, long SQL, nested schemas, multiple calls).
 
 ---
 
