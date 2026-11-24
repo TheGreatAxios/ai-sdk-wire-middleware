@@ -1,4 +1,4 @@
-import type { LanguageModelV3FunctionTool } from '@ai-sdk/provider';
+import type { LanguageModelV4FunctionTool } from '@ai-sdk/provider';
 
 /** Public options for the `compactTools` middleware. */
 export interface CompactToolsOptions {
@@ -51,7 +51,7 @@ export interface ToolPlan {
 /** A single parsed `<call>…</call>` invocation. */
 export interface ParsedCall {
   toolName: string;
-  /** JSON-stringified arguments (matches `LanguageModelV3ToolCall.input`). */
+  /** JSON-stringified arguments (matches `LanguageModelV4ToolCall.input`). */
   input: string;
   /** Source range in the original text (for splitting around the call). */
   start: number;
@@ -74,4 +74,4 @@ export interface StashedTools {
   schemas: Record<string, string>;
 }
 
-export type FunctionTool = LanguageModelV3FunctionTool;
+export type FunctionTool = LanguageModelV4FunctionTool;

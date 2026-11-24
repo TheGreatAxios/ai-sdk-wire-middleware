@@ -22,7 +22,7 @@
  */
 import { createOpenAI } from '@ai-sdk/openai';
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
-import type { LanguageModelV3 } from '@ai-sdk/provider';
+import type { LanguageModelV4 } from '@ai-sdk/provider';
 
 // ─────────────────────────────────────────────────── Provider types ──
 
@@ -36,7 +36,7 @@ export interface ProviderConfig {
    * Factory to create a chat model instance.
    * Receives a model slug and returns an AI SDK language model.
    */
-  chatModel: (slug: string) => LanguageModelV3;
+  chatModel: (slug: string) => LanguageModelV4;
   /** Human-readable label. */
   label: string;
 }

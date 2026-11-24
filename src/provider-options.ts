@@ -1,13 +1,13 @@
-import type { SharedV3ProviderOptions } from '@ai-sdk/provider';
+import type { SharedV4ProviderOptions } from '@ai-sdk/provider';
 import type { ToolPlan } from './types.ts';
 import { STASH_KEY } from './types.ts';
 
 /** Persist the tool plans across transformParams → wrap{Generate,Stream}. */
 export function stashPlans(
-  providerOptions: SharedV3ProviderOptions | undefined,
+  providerOptions: SharedV4ProviderOptions | undefined,
   plans: ToolPlan[],
   stripPreamble?: boolean,
-): SharedV3ProviderOptions {
+): SharedV4ProviderOptions {
   const existing = (providerOptions?.[STASH_KEY] ?? {}) as Record<string, unknown>;
   const stash = {
     ...existing,
@@ -24,7 +24,7 @@ export function stashPlans(
   return {
     ...(providerOptions ?? {}),
     [STASH_KEY]: stash as unknown as Record<string, never>,
-  } as SharedV3ProviderOptions;
+  } as SharedV4ProviderOptions;
 }
 
 interface StashShape {
@@ -40,7 +40,7 @@ interface StashShape {
 }
 
 export function unstashPlans(
-  providerOptions: SharedV3ProviderOptions | undefined,
+  providerOptions: SharedV4ProviderOptions | undefined,
 ): { plans: ToolPlan[]; stripPreamble: boolean } {
   const stash = (providerOptions?.[STASH_KEY] ?? {}) as StashShape;
   const raw = stash.plans;

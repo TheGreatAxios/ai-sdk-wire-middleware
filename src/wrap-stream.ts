@@ -1,7 +1,7 @@
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamResult,
+  LanguageModelV4CallOptions,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
 import { CALL_CLOSE, CALL_OPEN, encodeArgs, splitNameAndBody, ToolReduceParseError } from './parser.ts';
 import { unstashPlans } from './provider-options.ts';
@@ -18,9 +18,9 @@ type State =
   | { kind: 'IN_BODY'; toolName: string; toolPlan: ToolPlan | undefined; argsAcc: string; toolInputId: string; nameEmitted: boolean };
 
 export async function wrapStream(
-  params: LanguageModelV3CallOptions,
-  doStream: () => PromiseLike<LanguageModelV3StreamResult>,
-): Promise<LanguageModelV3StreamResult> {
+  params: LanguageModelV4CallOptions,
+  doStream: () => PromiseLike<LanguageModelV4StreamResult>,
+): Promise<LanguageModelV4StreamResult> {
   const { plans } = unstashPlans(params.providerOptions);
   const result = await doStream();
   if (plans.length === 0) return result;
@@ -31,22 +31,22 @@ export async function wrapStream(
 }
 
 function makeParser(planByName: Map<string, ToolPlan>): TransformStream<
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamPart
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamPart
 > {
   let buffer = '';
   let state: State = { kind: 'OUTSIDE' };
   let textBlockId: string | null = null;
   let toolCallEmitted = false;
 
-  function openTextBlock(controller: TransformStreamDefaultController<LanguageModelV3StreamPart>) {
+  function openTextBlock(controller: TransformStreamDefaultController<LanguageModelV4StreamPart>) {
     if (textBlockId == null) {
       textBlockId = genId('txt');
       controller.enqueue({ type: 'text-start', id: textBlockId });
     }
   }
   function closeTextBlock(
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
   ) {
     if (textBlockId != null) {
       controller.enqueue({ type: 'text-end', id: textBlockId });
@@ -54,7 +54,7 @@ function makeParser(planByName: Map<string, ToolPlan>): TransformStream<
     }
   }
   function emitText(
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
     text: string,
   ) {
     if (text.length === 0) return;
@@ -72,7 +72,7 @@ function makeParser(planByName: Map<string, ToolPlan>): TransformStream<
   }
 
   function processBuffer(
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
     flushAll: boolean,
   ) {
     while (buffer.length > 0) {
@@ -188,7 +188,7 @@ function makeParser(planByName: Map<string, ToolPlan>): TransformStream<
   }
 
   function tryEmitToolCall(
-    controller: TransformStreamDefaultController<LanguageModelV3StreamPart>,
+    controller: TransformStreamDefaultController<LanguageModelV4StreamPart>,
     body: { toolName: string; toolPlan: ToolPlan | undefined; argsAcc: string },
     partial: boolean,
   ) {
@@ -221,7 +221,7 @@ function makeParser(planByName: Map<string, ToolPlan>): TransformStream<
     }
   }
 
-  return new TransformStream<LanguageModelV3StreamPart, LanguageModelV3StreamPart>({
+  return new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
     transform(chunk, controller) {
       switch (chunk.type) {
         case 'text-start':

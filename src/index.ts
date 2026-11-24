@@ -1,4 +1,4 @@
-import type { LanguageModelV3Middleware } from '@ai-sdk/provider';
+import type { LanguageModelV4Middleware } from '@ai-sdk/provider';
 import type { CompactToolsOptions } from './types.ts';
 import { transformParams } from './transform-params.ts';
 import { wrapGenerate } from './wrap-generate.ts';
@@ -15,7 +15,7 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
  * - `wire` (default): `<call>getWeather location=Austin units=metric</call>`
  * - `json`: `<call>getWeather {"location":"Austin","units":"metric"}</call>`
  *
- * Plug into AI SDK v6 via `wrapLanguageModel`:
+ * Plug into AI SDK v7 via `wrapLanguageModel`:
  *
  * ```ts
  * import { wrapLanguageModel } from 'ai';
@@ -27,7 +27,7 @@ export { renderSignature, planTools, isFlatObject } from './signature.ts';
  * });
  * ```
  */
-export function compactTools(options: CompactToolsOptions = {}): LanguageModelV3Middleware {
+export function compactTools(options: CompactToolsOptions = {}): LanguageModelV4Middleware {
   const opts = {
     syntax: options.syntax ?? 'wire',
     fallbackToJson: options.fallbackToJson ?? 'complex',
@@ -37,7 +37,7 @@ export function compactTools(options: CompactToolsOptions = {}): LanguageModelV3
   } as const;
 
   return {
-    specificationVersion: 'v3',
+    specificationVersion: 'v4',
     transformParams: async ({ params }) => transformParams(params, opts),
     wrapGenerate: async ({ doGenerate, params }) => wrapGenerate(params, doGenerate),
     wrapStream: async ({ doStream, params }) => wrapStream(params, doStream),

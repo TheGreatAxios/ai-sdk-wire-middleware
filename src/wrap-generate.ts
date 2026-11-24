@@ -1,9 +1,9 @@
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3Content,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3Text,
-  LanguageModelV3ToolCall,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Content,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4Text,
+  LanguageModelV4ToolCall,
 } from '@ai-sdk/provider';
 import { findCallSpans, splitNameAndBody, encodeArgs, ToolReduceParseError } from './parser.ts';
 import { unstashPlans } from './provider-options.ts';
@@ -14,15 +14,15 @@ function genId(): string {
 }
 
 export async function wrapGenerate(
-  params: LanguageModelV3CallOptions,
-  doGenerate: () => PromiseLike<LanguageModelV3GenerateResult>,
-): Promise<LanguageModelV3GenerateResult> {
+  params: LanguageModelV4CallOptions,
+  doGenerate: () => PromiseLike<LanguageModelV4GenerateResult>,
+): Promise<LanguageModelV4GenerateResult> {
   const { plans } = unstashPlans(params.providerOptions);
   const result = await doGenerate();
   if (plans.length === 0) return result;
 
   const planByName = new Map(plans.map(p => [p.name, p]));
-  const newContent: LanguageModelV3Content[] = [];
+  const newContent: LanguageModelV4Content[] = [];
   let toolCallEmitted = false;
 
   for (const part of result.content) {
@@ -42,7 +42,7 @@ export async function wrapGenerate(
       if (span.start > cursor) {
         const leading = text.slice(cursor, span.start);
         if (leading.trim().length > 0) {
-          newContent.push({ type: 'text', text: leading } as LanguageModelV3Text);
+          newContent.push({ type: 'text', text: leading } as LanguageModelV4Text);
         }
       }
       const { toolName, argsBody } = splitNameAndBody(span.body);
@@ -52,7 +52,7 @@ export async function wrapGenerate(
         newContent.push({
           type: 'text',
           text: text.slice(span.start, span.end),
-        } as LanguageModelV3Text);
+        } as LanguageModelV4Text);
         cursor = span.end;
         continue;
       }
@@ -63,7 +63,7 @@ export async function wrapGenerate(
           toolCallId: genId(),
           toolName,
           input,
-        } as LanguageModelV3ToolCall);
+        } as LanguageModelV4ToolCall);
         toolCallEmitted = true;
       } catch (err) {
         // Surface the error back to the model as text so it can correct itself.
@@ -74,7 +74,7 @@ export async function wrapGenerate(
           text:
             text.slice(span.start, span.end) +
             `\n<tool-error name="${toolName}">${message}</tool-error>`,
-        } as LanguageModelV3Text);
+        } as LanguageModelV4Text);
       }
       cursor = span.end;
     }
@@ -82,7 +82,7 @@ export async function wrapGenerate(
     if (cursor < text.length) {
       const trailing = text.slice(cursor);
       if (trailing.trim().length > 0) {
-        newContent.push({ type: 'text', text: trailing } as LanguageModelV3Text);
+        newContent.push({ type: 'text', text: trailing } as LanguageModelV4Text);
       }
     }
   }
