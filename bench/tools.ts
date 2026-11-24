@@ -4,7 +4,7 @@
  * Each entry is provided in TWO shapes:
  *   - `aiSdkTool` — a Vercel AI SDK `tool({ inputSchema, execute })` value, ready to
  *     drop into `generateText({ tools: { ... } })`.
- *   - `providerTool` — the raw `LanguageModelV3FunctionTool` shape used by the offline
+ *   - `providerTool` — the raw `LanguageModelV4FunctionTool` shape used by the offline
  *     token / round-trip bench (which never goes through `generateText`).
  *
  * Plus a `cases` array of representative invocations for each tool so the benches

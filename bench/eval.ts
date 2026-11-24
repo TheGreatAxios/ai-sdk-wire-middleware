@@ -13,11 +13,11 @@
  *   bun run bench
  */
 import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamResult,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
 import { writeFileSync, mkdirSync, existsSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -170,13 +170,13 @@ function pct(r: number): string {
 
 // ─────────────────────────────────────────── round-trip correctness ──
 
-function makeMockModel(scriptedText: string): LanguageModelV3 {
+function makeMockModel(scriptedText: string): LanguageModelV4 {
   return {
-    specificationVersion: 'v3',
+    specificationVersion: 'v4',
     provider: 'mock',
     modelId: 'mock-1',
     supportedUrls: {},
-    async doGenerate(): Promise<LanguageModelV3GenerateResult> {
+    async doGenerate(): Promise<LanguageModelV4GenerateResult> {
       return {
         content: [{ type: 'text', text: scriptedText }],
         finishReason: { unified: 'stop', raw: 'stop' },
@@ -187,8 +187,8 @@ function makeMockModel(scriptedText: string): LanguageModelV3 {
         warnings: [],
       };
     },
-    async doStream(): Promise<LanguageModelV3StreamResult> {
-      const parts: LanguageModelV3StreamPart[] = [
+    async doStream(): Promise<LanguageModelV4StreamResult> {
+      const parts: LanguageModelV4StreamPart[] = [
         { type: 'stream-start', warnings: [] },
         { type: 'text-start', id: 's' },
         ...[...scriptedText].map(ch => ({
@@ -225,7 +225,7 @@ async function correctness(): Promise<{ passed: number; total: number }> {
   let fail = 0;
   for (const c of cases) {
     const model = makeMockModel(c.compactCall);
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ role: 'user', content: [{ type: 'text', text: c.prompt }] }],
       tools: providerTools,
     };

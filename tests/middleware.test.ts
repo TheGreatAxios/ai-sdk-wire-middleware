@@ -1,21 +1,22 @@
 import { describe, expect, test } from 'bun:test';
+import { wrapLanguageModel } from 'ai';
 import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamResult,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
 import { compactTools } from '../src/index.ts';
 
-/** Build a mock LanguageModelV3 that returns whatever content/stream you give it. */
+/** Build a mock LanguageModelV4 that returns whatever content/stream you give it. */
 function makeMockModel(opts: {
-  generateContent?: LanguageModelV3GenerateResult['content'];
-  streamParts?: LanguageModelV3StreamPart[];
-  capture?: { lastParams?: LanguageModelV3CallOptions };
-}): LanguageModelV3 {
+  generateContent?: LanguageModelV4GenerateResult['content'];
+  streamParts?: LanguageModelV4StreamPart[];
+  capture?: { lastParams?: LanguageModelV4CallOptions };
+}): LanguageModelV4 {
   return {
-    specificationVersion: 'v3',
+    specificationVersion: 'v4',
     provider: 'mock',
     modelId: 'mock-1',
     supportedUrls: {},
@@ -29,18 +30,18 @@ function makeMockModel(opts: {
           outputTokens: { total: 0, text: 0, reasoning: 0 },
         },
         warnings: [],
-      } satisfies LanguageModelV3GenerateResult;
+      } satisfies LanguageModelV4GenerateResult;
     },
     async doStream(params) {
       if (opts.capture) opts.capture.lastParams = params;
       const parts = opts.streamParts ?? [];
-      const stream = new ReadableStream<LanguageModelV3StreamPart>({
+      const stream = new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           for (const p of parts) controller.enqueue(p);
           controller.close();
         },
       });
-      return { stream } satisfies LanguageModelV3StreamResult;
+      return { stream } satisfies LanguageModelV4StreamResult;
     },
   };
 }
@@ -61,9 +62,9 @@ const weatherTool = {
 
 async function runMiddleware(
   mw: ReturnType<typeof compactTools>,
-  model: LanguageModelV3,
-  params: LanguageModelV3CallOptions,
-): Promise<{ params: LanguageModelV3CallOptions; result: LanguageModelV3GenerateResult }> {
+  model: LanguageModelV4,
+  params: LanguageModelV4CallOptions,
+): Promise<{ params: LanguageModelV4CallOptions; result: LanguageModelV4GenerateResult }> {
   const transformed = await mw.transformParams!({ type: 'generate', params, model });
   const result = await mw.wrapGenerate!({
     doGenerate: () => model.doGenerate(transformed),
@@ -78,7 +79,7 @@ describe('compactTools middleware — transformParams', () => {
   test('strips tools and injects manual', async () => {
     const mw = compactTools();
     const model = makeMockModel({});
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
       tools: [weatherTool],
     };
@@ -110,7 +111,7 @@ describe('compactTools middleware — transformParams', () => {
   test('passes through when no tools', async () => {
     const mw = compactTools();
     const model = makeMockModel({});
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
     };
     const transformed = await mw.transformParams!({ type: 'generate', params, model });
@@ -181,9 +182,9 @@ describe('compactTools middleware — wrapGenerate', () => {
 });
 
 async function collectStream(
-  stream: ReadableStream<LanguageModelV3StreamPart>,
-): Promise<LanguageModelV3StreamPart[]> {
-  const out: LanguageModelV3StreamPart[] = [];
+  stream: ReadableStream<LanguageModelV4StreamPart>,
+): Promise<LanguageModelV4StreamPart[]> {
+  const out: LanguageModelV4StreamPart[] = [];
   const reader = stream.getReader();
   while (true) {
     const { done, value } = await reader.read();
@@ -193,7 +194,7 @@ async function collectStream(
   return out;
 }
 
-function deltaParts(text: string): LanguageModelV3StreamPart[] {
+function deltaParts(text: string): LanguageModelV4StreamPart[] {
   return [
     { type: 'stream-start', warnings: [] },
     { type: 'text-start', id: 'src' },
@@ -215,7 +216,7 @@ describe('compactTools middleware — wrapStream', () => {
     const text = 'Let me check.\n<call>getWeather location="Austin" units=metric</call>\nOK';
     const model = makeMockModel({ streamParts: deltaParts(text) });
     const mw = compactTools();
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'weather?' }] }],
       tools: [weatherTool],
     };
@@ -242,7 +243,7 @@ describe('compactTools middleware — wrapStream', () => {
   test('text without calls is forwarded as text-delta', async () => {
     const model = makeMockModel({ streamParts: deltaParts('just an answer') });
     const mw = compactTools();
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
       tools: [weatherTool],
     };
@@ -265,7 +266,7 @@ describe('compactTools middleware — wrapStream', () => {
 
   test('chunked open tag does not leak <ca into text', async () => {
     // Manually emit the open tag split across chunks.
-    const parts: LanguageModelV3StreamPart[] = [
+    const parts: LanguageModelV4StreamPart[] = [
       { type: 'stream-start', warnings: [] },
       { type: 'text-start', id: 'src' },
       { type: 'text-delta', id: 'src', delta: 'hi <ca' },
@@ -314,7 +315,7 @@ describe('history rewriting', () => {
   test('rewrites assistant tool-call into compact text', async () => {
     const mw = compactTools();
     const model = makeMockModel({});
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [
         { role: 'user', content: [{ type: 'text', text: 'weather please' }] },
         {
@@ -354,5 +355,28 @@ describe('history rewriting', () => {
     const userMsgs = transformed.prompt.filter(m => m.role === 'user');
     const last = userMsgs[userMsgs.length - 1]!;
     expect((last.content as any)[0].text).toContain('72F sunny');
+  });
+});
+
+describe('AI SDK v7 integration (wrapLanguageModel)', () => {
+  test('middleware exposes specificationVersion v4 and works with wrapLanguageModel', async () => {
+    const mw = compactTools();
+    expect(mw.specificationVersion).toBe('v4');
+
+    const raw = makeMockModel({
+      generateContent: [{ type: 'text', text: '<call>getWeather location="Austin" units=metric</call>' }],
+    });
+    const wrapped = wrapLanguageModel({ model: raw, middleware: mw });
+    expect(wrapped.specificationVersion).toBe('v4');
+
+    const res = await wrapped.doGenerate({
+      prompt: [{ role: 'user', content: [{ type: 'text', text: 'weather?' }] }],
+      tools: [weatherTool],
+    });
+    expect(res.finishReason.unified).toBe('tool-calls');
+    const call = res.content.find(p => p.type === 'tool-call');
+    expect(call).toBeDefined();
+    expect((call as any).toolName).toBe('getWeather');
+    expect(JSON.parse((call as any).input)).toEqual({ location: 'Austin', units: 'metric' });
   });
 });

@@ -1,6 +1,6 @@
 import type {
-  LanguageModelV3CallOptions,
-  LanguageModelV3Message,
+  LanguageModelV4CallOptions,
+  LanguageModelV4Message,
 } from '@ai-sdk/provider';
 import type { CompactToolsOptions, FunctionTool, ToolPlan } from './types.ts';
 import { planTools } from './signature.ts';
@@ -10,10 +10,10 @@ import { stashPlans } from './provider-options.ts';
 
 /** Implements the transformParams hook. */
 export async function transformParams(
-  params: LanguageModelV3CallOptions,
+  params: LanguageModelV4CallOptions,
   options: Required<Pick<CompactToolsOptions, 'syntax' | 'fallbackToJson' | 'placement'>> &
     Pick<CompactToolsOptions, 'manualHeader' | 'debug'>,
-): Promise<LanguageModelV3CallOptions> {
+): Promise<LanguageModelV4CallOptions> {
   const functionTools = (params.tools ?? []).filter(
     (t): t is FunctionTool => (t as { type?: string }).type === 'function',
   );
@@ -59,7 +59,7 @@ export async function transformParams(
   };
 }
 
-function hasStashedPlans(params: LanguageModelV3CallOptions): boolean {
+function hasStashedPlans(params: LanguageModelV4CallOptions): boolean {
   const stash = params.providerOptions?.['toolReduce'] as { plans?: unknown } | undefined;
   return Boolean(stash?.plans);
 }
@@ -69,11 +69,11 @@ function hasStashedPlans(params: LanguageModelV3CallOptions): boolean {
  * sees a self-consistent compact-call transcript instead of native JSON.
  */
 function rewriteHistory(
-  prompt: LanguageModelV3Message[],
+  prompt: LanguageModelV4Message[],
   plans: ToolPlan[],
-): LanguageModelV3Message[] {
+): LanguageModelV4Message[] {
   const planByName = new Map(plans.map(p => [p.name, p]));
-  const out: LanguageModelV3Message[] = [];
+  const out: LanguageModelV4Message[] = [];
   for (const msg of prompt) {
     if (msg.role === 'assistant') {
       const collapsed = collapseAssistantContent(msg.content, planByName);
@@ -93,7 +93,7 @@ function rewriteHistory(
                 text: serializeToolResult(part.toolName, value, isError),
               },
             ],
-          } as LanguageModelV3Message);
+          } as LanguageModelV4Message);
         }
       }
       continue;
@@ -138,8 +138,8 @@ function extractToolOutput(
   }
 }
 
-function mergeConsecutiveUsers(prompt: LanguageModelV3Message[]): LanguageModelV3Message[] {
-  const out: LanguageModelV3Message[] = [];
+function mergeConsecutiveUsers(prompt: LanguageModelV4Message[]): LanguageModelV4Message[] {
+  const out: LanguageModelV4Message[] = [];
   for (const msg of prompt) {
     const last = out[out.length - 1];
     if (last && last.role === 'user' && msg.role === 'user') {
@@ -152,7 +152,7 @@ function mergeConsecutiveUsers(prompt: LanguageModelV3Message[]): LanguageModelV
       out[out.length - 1] = {
         ...last,
         content: [{ type: 'text', text: [...lastTexts, ...newTexts].join('\n') }],
-      } as LanguageModelV3Message;
+      } as LanguageModelV4Message;
       continue;
     }
     out.push(msg);

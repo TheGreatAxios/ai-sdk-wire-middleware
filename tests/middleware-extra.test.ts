@@ -1,20 +1,20 @@
 import { describe, expect, test } from 'bun:test';
 import type {
-  LanguageModelV3,
-  LanguageModelV3CallOptions,
-  LanguageModelV3GenerateResult,
-  LanguageModelV3StreamPart,
-  LanguageModelV3StreamResult,
+  LanguageModelV4,
+  LanguageModelV4CallOptions,
+  LanguageModelV4GenerateResult,
+  LanguageModelV4StreamPart,
+  LanguageModelV4StreamResult,
 } from '@ai-sdk/provider';
 import { compactTools } from '../src/index.ts';
 
 function makeMockModel(opts: {
-  generateContent?: LanguageModelV3GenerateResult['content'];
-  streamParts?: LanguageModelV3StreamPart[];
-  capture?: { lastParams?: LanguageModelV3CallOptions };
-}): LanguageModelV3 {
+  generateContent?: LanguageModelV4GenerateResult['content'];
+  streamParts?: LanguageModelV4StreamPart[];
+  capture?: { lastParams?: LanguageModelV4CallOptions };
+}): LanguageModelV4 {
   return {
-    specificationVersion: 'v3',
+    specificationVersion: 'v4',
     provider: 'mock',
     modelId: 'mock-1',
     supportedUrls: {},
@@ -28,19 +28,19 @@ function makeMockModel(opts: {
           outputTokens: { total: 0, text: 0, reasoning: 0 },
         },
         warnings: [],
-      } satisfies LanguageModelV3GenerateResult;
+      } satisfies LanguageModelV4GenerateResult;
     },
     async doStream(params) {
       if (opts.capture) opts.capture.lastParams = params;
       const parts = opts.streamParts ?? [];
       return {
-        stream: new ReadableStream<LanguageModelV3StreamPart>({
+        stream: new ReadableStream<LanguageModelV4StreamPart>({
           start(controller) {
             for (const p of parts) controller.enqueue(p);
             controller.close();
           },
         }),
-      } satisfies LanguageModelV3StreamResult;
+      } satisfies LanguageModelV4StreamResult;
     },
   };
 }
@@ -76,8 +76,8 @@ const sendEmailTool = {
 
 async function runGenerate(
   mw: ReturnType<typeof compactTools>,
-  model: LanguageModelV3,
-  params: LanguageModelV3CallOptions,
+  model: LanguageModelV4,
+  params: LanguageModelV4CallOptions,
 ) {
   const transformed = await mw.transformParams!({ type: 'generate', params, model });
   const result = await mw.wrapGenerate!({
@@ -90,9 +90,9 @@ async function runGenerate(
 }
 
 async function collectStream(
-  stream: ReadableStream<LanguageModelV3StreamPart>,
-): Promise<LanguageModelV3StreamPart[]> {
-  const out: LanguageModelV3StreamPart[] = [];
+  stream: ReadableStream<LanguageModelV4StreamPart>,
+): Promise<LanguageModelV4StreamPart[]> {
+  const out: LanguageModelV4StreamPart[] = [];
   const reader = stream.getReader();
   while (true) {
     const { done, value } = await reader.read();
@@ -104,9 +104,9 @@ async function collectStream(
 
 async function runStream(
   mw: ReturnType<typeof compactTools>,
-  model: LanguageModelV3,
-  params: LanguageModelV3CallOptions,
-): Promise<LanguageModelV3StreamPart[]> {
+  model: LanguageModelV4,
+  params: LanguageModelV4CallOptions,
+): Promise<LanguageModelV4StreamPart[]> {
   const transformed = await mw.transformParams!({ type: 'stream', params, model });
   const streamRes = await mw.wrapStream!({
     doGenerate: () => model.doGenerate(transformed),
@@ -117,7 +117,7 @@ async function runStream(
   return collectStream(streamRes.stream);
 }
 
-function deltaParts(text: string): LanguageModelV3StreamPart[] {
+function deltaParts(text: string): LanguageModelV4StreamPart[] {
   return [
     { type: 'stream-start', warnings: [] },
     { type: 'text-start', id: 'src' },
@@ -138,7 +138,7 @@ describe('transformParams — toolChoice handling', () => {
   test('toolChoice "none" with no tools is a true passthrough', async () => {
     const mw = compactTools();
     const model = makeMockModel({});
-    const params: LanguageModelV3CallOptions = {
+    const params: LanguageModelV4CallOptions = {
       prompt: [{ role: 'user', content: [{ type: 'text', text: 'hi' }] }],
       toolChoice: { type: 'none' },
     };
@@ -319,7 +319,7 @@ describe('wrapGenerate — additional cases', () => {
 
 describe('wrapStream — additional cases', () => {
   test('split </call> across chunks still produces a single tool-call', async () => {
-    const parts: LanguageModelV3StreamPart[] = [
+    const parts: LanguageModelV4StreamPart[] = [
       { type: 'stream-start', warnings: [] },
       { type: 'text-start', id: 'src' },
       { type: 'text-delta', id: 'src', delta: '<call>getWeather location="X"</' },
@@ -400,7 +400,7 @@ describe('wrapStream — additional cases', () => {
 
   test('flush handler closes any open text block on stream end without a finish', async () => {
     // No 'finish' part at all — only stream-start + text deltas, then upstream closes.
-    const parts: LanguageModelV3StreamPart[] = [
+    const parts: LanguageModelV4StreamPart[] = [
       { type: 'stream-start', warnings: [] },
       { type: 'text-start', id: 'src' },
       { type: 'text-delta', id: 'src', delta: 'hello' },
