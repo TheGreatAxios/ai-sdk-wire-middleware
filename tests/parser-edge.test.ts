@@ -137,6 +137,31 @@ describe('tokenizeWire — edge cases', () => {
   test('newline embedded in quoted value via escape sequence', () => {
     expect(tokenizeWire('msg="line1\\nline2"')).toEqual(['msg="line1\\nline2"']);
   });
+
+  test('JSON array of objects with internal spaces stays a single token', () => {
+    const body =
+      'file="pinecrest_census_2025.csv" entries=[{"row": 0, "column": "Provider CCN", "field": "ws_s2.provider_ccn"}]';
+    expect(tokenizeWire(body)).toEqual([
+      'file="pinecrest_census_2025.csv"',
+      'entries=[{"row": 0, "column": "Provider CCN", "field": "ws_s2.provider_ccn"}]',
+    ]);
+  });
+
+  test('JSON object with nested arrays and spaces stays a single token', () => {
+    const body = 'id=1 filter={"status": "active", "tags": ["a b", "c"], "meta": {"limit": 10}}';
+    expect(tokenizeWire(body)).toEqual([
+      'id=1',
+      'filter={"status": "active", "tags": ["a b", "c"], "meta": {"limit": 10}}',
+    ]);
+  });
+
+  test('brackets and braces inside quoted JSON strings do not break nesting', () => {
+    const body = 'entries=[{"note": "a ] } [ { \\"quoted\\" b"}] ok=true';
+    expect(tokenizeWire(body)).toEqual([
+      'entries=[{"note": "a ] } [ { \\"quoted\\" b"}]',
+      'ok=true',
+    ]);
+  });
 });
 
 describe('coerceValue — edge cases', () => {
@@ -222,6 +247,73 @@ describe('parseWireBody — edge cases', () => {
   test('multiline body parses keys split across lines', () => {
     const out = parseWireBody('location="NYC"\n  units=metric', weatherPlan);
     expect(out).toEqual({ location: 'NYC', units: 'metric' });
+  });
+
+  test('parses nested JSON array of objects in wire call', () => {
+    const stageFieldPlan: ToolPlan = {
+      name: 'stage_field',
+      signature: 'stage_field: file:string, entries:[object]',
+      encoding: 'wire',
+      fields: [
+        { name: 'file', required: true, type: 'string' },
+        { name: 'entries', required: true, type: '[object]' },
+      ],
+      inputSchema: {},
+    };
+    const text =
+      '<call>stage_field file="pinecrest_census_2025.csv" entries=[{"row": 0, "column": "Provider CCN", "field": "ws_s2.provider_ccn"}]</call>';
+    const calls = parseCalls(text, [stageFieldPlan]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.toolName).toBe('stage_field');
+    expect(JSON.parse(calls[0]!.input)).toEqual({
+      file: 'pinecrest_census_2025.csv',
+      entries: [{ row: 0, column: 'Provider CCN', field: 'ws_s2.provider_ccn' }],
+    });
+  });
+
+  test('parses nested JSON object value in wire call', () => {
+    const queryPlan: ToolPlan = {
+      name: 'query',
+      signature: 'query: table:string, filter:object',
+      encoding: 'wire',
+      fields: [
+        { name: 'table', required: true, type: 'string' },
+        { name: 'filter', required: true, type: 'object' },
+      ],
+      inputSchema: {},
+    };
+    const out = parseWireBody(
+      'table=users filter={"status": "active", "roles": ["admin", "editor"], "meta": {"min": 1}}',
+      queryPlan,
+    );
+    expect(out).toEqual({
+      table: 'users',
+      filter: { status: 'active', roles: ['admin', 'editor'], meta: { min: 1 } },
+    });
+  });
+
+  test('parses multiline JSON array value in wire call', () => {
+    const plan: ToolPlan = {
+      name: 'stage_field',
+      signature: 'stage_field: file:string, entries:[object]',
+      encoding: 'wire',
+      fields: [
+        { name: 'file', required: true, type: 'string' },
+        { name: 'entries', required: true, type: '[object]' },
+      ],
+      inputSchema: {},
+    };
+    const body = `file="census.csv" entries=[
+      {"row": 0, "column": "CCN"},
+      {"row": 1, "column": "Beds"}
+    ]`;
+    expect(parseWireBody(body, plan)).toEqual({
+      file: 'census.csv',
+      entries: [
+        { row: 0, column: 'CCN' },
+        { row: 1, column: 'Beds' },
+      ],
+    });
   });
 });
 

@@ -146,17 +146,19 @@ export function reconstructNested(flat: Record<string, unknown>): Record<string,
 }
 
 /**
- * Whitespace-delimited tokenizer. Splits on whitespace except inside matched quotes.
- * A token may contain an `=` followed by a quoted string. Backslash escapes
- * inside quotes are honored: \", \\, \n, \t.
+ * Whitespace-delimited tokenizer. Splits on whitespace except inside matched quotes
+ * or balanced JSON bracket/brace containers (`[…]`, `{…}`).
+ * A token may contain an `=` followed by a quoted string or nested JSON value.
+ * Backslash escapes inside quotes are honored: \", \\, \n, \t.
  */
 export function tokenizeWire(input: string): string[] {
   const out: string[] = [];
+  const closeStack: string[] = [];
   let i = 0;
   let cur = '';
   while (i < input.length) {
     const ch = input[i]!;
-    if (/\s/.test(ch)) {
+    if (closeStack.length === 0 && /\s/.test(ch)) {
       if (cur.length) {
         out.push(cur);
         cur = '';
@@ -181,6 +183,13 @@ export function tokenizeWire(input: string): string[] {
       }
       continue;
     }
+    if (ch === '[') {
+      closeStack.push(']');
+    } else if (ch === '{') {
+      closeStack.push('}');
+    } else if (closeStack.length > 0 && closeStack[closeStack.length - 1] === ch) {
+      closeStack.pop();
+    }
     cur += ch;
     i++;
   }
@@ -194,8 +203,11 @@ export function coerceValue(raw: string, type: string | undefined): unknown {
   if ((raw.startsWith('"') && raw.endsWith('"')) || (raw.startsWith("'") && raw.endsWith("'"))) {
     return unquote(raw);
   }
-  // Array literals: ["a","b"]
-  if (raw.startsWith('[') && raw.endsWith(']')) {
+  // JSON array or object literals: ["a","b"], [{"row": 0}], {"k": "v"}
+  if (
+    (raw.startsWith('[') && raw.endsWith(']')) ||
+    (raw.startsWith('{') && raw.endsWith('}'))
+  ) {
     try {
       return JSON.parse(raw);
     } catch {
